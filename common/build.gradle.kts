@@ -31,9 +31,10 @@ val FABRIC_API_VERSION: String by rootProject.extra
 sourceSets.create("desktop")
 
 buildConfig {
-    className("BuildConfig")
-    packageName("net.irisshaders.iris")
+    className("BuildConfig") // forces the class name. Defaults to 'BuildConfig'
+    packageName("net.irisshaders.iris") // forces the package. Defaults to '${project.group}'
     useJavaOutput()
+    // TODO hook this up
     buildConfigField("IS_SHARED_BETA", false)
     buildConfigField("ACTIVATE_RENDERDOC", false)
     buildConfigField("BETA_TAG", "")
@@ -43,12 +44,24 @@ buildConfig {
     }
 }
 
-// === 下载 metallum jar 文件 ===
+// === 下载 metallum 主 jar 文件 ===
 val downloadMetallum by tasks.registering(Exec::class) {
     onlyIf { !file("libs/metallum-0.0.21.jar").exists() }
     commandLine(
         "curl", "-L", "-o", "libs/metallum-0.0.21.jar",
         "https://github.com/kokodio/metallum/releases/download/v0.0.21/metallum-0.0.21.jar"
+    )
+    doFirst {
+        mkdir("libs")
+    }
+}
+
+// === 下载 metallum sources jar 文件 ===
+val downloadMetallumSources by tasks.registering(Exec::class) {
+    onlyIf { !file("libs/metallum-0.0.21-sources.jar").exists() }
+    commandLine(
+        "curl", "-L", "-o", "libs/metallum-0.0.21-sources.jar",
+        "https://github.com/kokodio/metallum/releases/download/v0.0.21/metallum-0.0.21-sources.jar"
     )
     doFirst {
         mkdir("libs")
@@ -65,8 +78,9 @@ dependencies {
     compileOnly("org.anarres:jcpp:1.4.14")
     compileOnly(files(rootDir.resolve("DHApi.jar")))
     
-    // 使用本地下载的 metallum jar
+    // Metallum - 同时添加主 jar 和 sources jar
     compileOnly(files("libs/metallum-0.0.21.jar"))
+    compileOnly(files("libs/metallum-0.0.21-sources.jar"))
 }
 
 afterEvaluate {
@@ -158,6 +172,7 @@ loom {
     accessWidenerPath = file("src/main/resources/iris.accesswidener")
     mods {
         val main by creating {
+            // to match the default mod generated for Forge
             sourceSet("vendored")
             sourceSet("main")
         }
@@ -165,6 +180,8 @@ loom {
 }
 
 // === Metal native library build task ===
+// 在 macOS 上编译 IrisMetalNative.swift 为 libiris_metal.dylib
+// 非 macOS 环境下跳过（Iris 会回退到 OpenGL 路径）
 val buildMetalNative by tasks.registering(Exec::class) {
     onlyIf { org.gradle.internal.os.OperatingSystem.current().isMacOsX }
     workingDir = projectDir
@@ -185,10 +202,11 @@ val buildMetalNative by tasks.registering(Exec::class) {
     }
 }
 
-// 让 processResources 依赖下载和native构建
+// 让 processResources 依赖下载和 native 构建
 tasks.named("processResources") {
     dependsOn(buildMetalNative)
     dependsOn(downloadMetallum)
+    dependsOn(downloadMetallumSources)
 }
 
 tasks {
@@ -216,6 +234,7 @@ tasks {
     }
 }
 
+// This trick hides common tasks in the IDEA list.
 tasks.configureEach {
     group = null
 }
