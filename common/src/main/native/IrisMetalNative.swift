@@ -99,7 +99,8 @@ public func irisMetalCommandBufferWaitUntilCompleted(_ bufferPtr: OpaquePointer?
 
 @_cdecl("iris_metal_release_object")
 public func irisMetalReleaseObject(_ ptr: OpaquePointer?) {
-    guard let ptr = ptr else { return }
+    // 修复：使用布尔检查避免未使用变量警告
+    guard ptr != nil else { return }
 }
 
 @_cdecl("iris_metal_is_null_handle")
@@ -131,7 +132,8 @@ public func irisMetalCreateTexture2D(
     desc.height = Int(height)
 
     if isCubemap != 0 {
-        desc.textureType = .cube
+        // 修复：使用正确的枚举成员名称
+        desc.textureType = .typeCube
         desc.arrayLength = 1
     } else if depthOrLayers > 1 {
         desc.textureType = .type2DArray
@@ -144,9 +146,7 @@ public func irisMetalCreateTexture2D(
     desc.usage = MTLTextureUsage(rawValue: UInt(usage))
     desc.storageMode = MTLStorageMode(rawValue: UInt(storageMode)) ?? .shared
 
-    if let labelStr = label {
-        desc.label = String(cString: labelStr)
-    }
+    // 移除：desc.label 设置代码，因为某些 SDK 版本 MTLTextureDescriptor 无此成员
 
     guard let texture = device.makeTexture(descriptor: desc) else { return nil }
     return OpaquePointer(Unmanaged.passUnretained(texture).toOpaque())
@@ -176,9 +176,7 @@ public func irisMetalCreateTexture3D(
     desc.usage = MTLTextureUsage(rawValue: UInt(usage))
     desc.storageMode = .shared
 
-    if let labelStr = label {
-        desc.label = String(cString: labelStr)
-    }
+    // 移除：desc.label 设置代码
 
     guard let texture = device.makeTexture(descriptor: desc) else { return nil }
     return OpaquePointer(Unmanaged.passUnretained(texture).toOpaque())
