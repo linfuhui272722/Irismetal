@@ -407,7 +407,8 @@ public func irisMetalSetBlendColor(
 ) {
     guard let ptr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
-    encoder.setBlendColorRed(r, green: g, blue: b, alpha: a)
+    // 修复：使用新的 API 名称
+    encoder.setBlendColor(red: r, green: g, blue: b, alpha: a)
 }
 
 @_cdecl("iris_metal_set_render_pipeline_state")
@@ -542,7 +543,8 @@ public func irisMetalDrawPrimitives(
     guard let ptr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
     let mtlType = mtlPrimitiveTypeFromInt(primitiveType)
-    encoder.drawPrimitives(mtlType, vertexStart: Int(vertexStart), vertexCount: Int(vertexCount), instanceCount: Int(instanceCount))
+    // 修复：添加 type: 标签
+    encoder.drawPrimitives(type: mtlType, vertexStart: Int(vertexStart), vertexCount: Int(vertexCount), instanceCount: Int(instanceCount))
 }
 
 @_cdecl("iris_metal_draw_indexed_primitives")
@@ -562,7 +564,8 @@ public func irisMetalDrawIndexedPrimitives(
     let mtlType = mtlPrimitiveTypeFromInt(primitiveType)
     let mtlIndexType = indexType == 0 ? MTLIndexType.uint16 : MTLIndexType.uint32
 
-    encoder.drawIndexedPrimitives(mtlType, indexCount: Int(indexCount), indexType: mtlIndexType, indexBuffer: indexBuffer, indexBufferOffset: indexBufferOffset, instanceCount: Int(instanceCount))
+    // 修复：添加 type: 标签
+    encoder.drawIndexedPrimitives(type: mtlType, indexCount: Int(indexCount), indexType: mtlIndexType, indexBuffer: indexBuffer, indexBufferOffset: indexBufferOffset, instanceCount: Int(instanceCount))
 }
 
 // MARK: - Blit 命令
