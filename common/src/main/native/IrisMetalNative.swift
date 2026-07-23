@@ -1,23 +1,23 @@
 // IrisMetalNative.swift
 //
-// Iris Metal 后端原生桥接层（Swift）
+// Iris Metal 后端原生桥接层
 //
 // 本文件实现 IrisMetalNativeBridge.java 中声明的所有 native 方法。
 // 它通过 Foundation / Metal / MetalKit / QuartzCore 框架直接调用 Metal API。
 //
 // 编译方式（macOS 上）：
-//   swiftc -O -target arm64-apple-macos14.0 \
-//     -framework Foundation -framework Metal -framework MetalKit \
-//     -framework QuartzCore -framework objc \
-//     -emit-library IrisMetalNative.swift \
-//     -o libiris_metal.dylib
+// swiftc -O -target arm64-apple-macos14.0 \
+//   -framework Foundation -framework Metal -framework MetalKit \
+//   -framework QuartzCore -framework objc \
+//   -emit-library IrisMetalNative.swift \
+//   -o libiris_metal.dylib
 //
 // 编译后的 dylib 需要放入 Iris mod jar 的 src/main/resources/natives/macos/ 目录。
 //
 // 与 metallum 的关系：
-//   metallum 的 MetallumNative.swift 实现了 vanilla/Sodium 的 Metal 后端。
-//   本文件实现 Iris 专属的 Metal 调用，但共享同一个系统默认 Metal 设备
-//   (MTLCreateSystemDefaultDevice() 返回单例)。
+// metallum 的 MetallumNative.swift 实现了 vanilla/Sodium 的 Metal 后端。
+// 本文件实现 Iris 专属的 Metal 调用，但共享同一个系统默认 Metal 设备
+// (MTLCreateSystemDefaultDevice() 返回单例)。
 //
 // 重要：本文件只能在 macOS + Apple Silicon 上编译运行。
 // 在非 macOS 环境下无法编译，Iris 会回退到 OpenGL 或禁用光影。
@@ -31,10 +31,13 @@ import QuartzCore
 
 /// Iris Metal 设备单例句柄（与 metallum 共享系统默认设备）
 private var irisDevice: MTLDevice?
+
 /// Iris 专属命令队列
 private var irisCommandQueue: MTLCommandQueue?
+
 /// 当前命令缓冲区
 private var currentCommandBuffer: MTLCommandBuffer?
+
 /// 帧嵌套计数
 private var frameDepth: Int = 0
 
@@ -45,7 +48,9 @@ public func irisMetalGetDevice() -> OpaquePointer? {
     if irisDevice == nil {
         irisDevice = MTLCreateSystemDefaultDevice()
     }
-    guard let device = irisDevice else { return nil }
+    guard let device = irisDevice else {
+        return nil
+    }
     return OpaquePointer(Unmanaged.passUnretained(device).toOpaque())
 }
 
@@ -197,11 +202,13 @@ public func irisMetalCreateBuffer(
 
     let mtlOptions = MTLResourceOptions(rawValue: UInt(options))
     let buffer: MTLBuffer
+
     if let dataPtr = data {
         buffer = device.makeBuffer(bytes: dataPtr, length: size, options: mtlOptions)!
     } else {
         buffer = device.makeBuffer(length: size, options: mtlOptions)!
     }
+
     return OpaquePointer(Unmanaged.passUnretained(buffer).toOpaque())
 }
 
@@ -233,6 +240,7 @@ public func irisMetalMakeRenderCommandEncoder(
     guard let bPtr = bufferPtr, let pdPtr = passDescriptorPtr else { return nil }
     let buffer = Unmanaged<MTLCommandBuffer>.fromOpaque(UnsafeRawPointer(bPtr)).takeUnretainedValue()
     let passDesc = Unmanaged<MTLRenderPassDescriptor>.fromOpaque(UnsafeRawPointer(pdPtr)).takeUnretainedValue()
+
     guard let encoder = buffer.makeRenderCommandEncoder(descriptor: passDesc) else { return nil }
     return OpaquePointer(Unmanaged.passUnretained(encoder).toOpaque())
 }
@@ -241,6 +249,7 @@ public func irisMetalMakeRenderCommandEncoder(
 public func irisMetalMakeBlitCommandEncoder(_ bufferPtr: OpaquePointer?) -> OpaquePointer? {
     guard let ptr = bufferPtr else { return nil }
     let buffer = Unmanaged<MTLCommandBuffer>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
+
     guard let encoder = buffer.makeBlitCommandEncoder() else { return nil }
     return OpaquePointer(Unmanaged.passUnretained(encoder).toOpaque())
 }
@@ -273,17 +282,17 @@ public func irisMetalSetRenderPassColorAttachment(
 ) {
     guard let ptr = descPtr else { return }
     let desc = Unmanaged<MTLRenderPassDescriptor>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
-
     let attachment = desc.colorAttachments[Int(index)]
+
     if let texPtr = texturePtr {
         let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(texPtr)).takeUnretainedValue()
         attachment.texture = texture
     }
+
     if shouldClear != 0 {
         attachment.loadAction = .clear
         attachment.storeAction = .store
-        attachment.clearColor = MTLClearColor(red: Double(clearR), green: Double(clearG),
-                                              blue: Double(clearB), alpha: Double(clearA))
+        attachment.clearColor = MTLClearColor(red: Double(clearR), green: Double(clearG), blue: Double(clearB), alpha: Double(clearA))
     } else {
         attachment.loadAction = .load
         attachment.storeAction = .store
@@ -300,18 +309,20 @@ public func irisMetalSetRenderPassDepthAttachment(
 ) {
     guard let ptr = descPtr else { return }
     let desc = Unmanaged<MTLRenderPassDescriptor>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
-
     let attachment = desc.depthAttachment
+
     if let texPtr = texturePtr {
         let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(texPtr)).takeUnretainedValue()
         attachment.texture = texture
     }
+
     if shouldClear != 0 {
         attachment.loadAction = .clear
         attachment.clearDepth = Double(clearDepth)
     } else {
         attachment.loadAction = .load
     }
+
     attachment.storeAction = shouldStore != 0 ? .store : .dontCare
 }
 
@@ -325,18 +336,20 @@ public func irisMetalSetRenderPassStencilAttachment(
 ) {
     guard let ptr = descPtr else { return }
     let desc = Unmanaged<MTLRenderPassDescriptor>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
-
     let attachment = desc.stencilAttachment
+
     if let texPtr = texturePtr {
         let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(texPtr)).takeUnretainedValue()
         attachment.texture = texture
     }
+
     if shouldClear != 0 {
         attachment.loadAction = .clear
         attachment.clearStencil = clearStencil
     } else {
         attachment.loadAction = .load
     }
+
     attachment.storeAction = shouldStore != 0 ? .store : .dontCare
 }
 
@@ -345,20 +358,24 @@ public func irisMetalSetRenderPassStencilAttachment(
 @_cdecl("iris_metal_set_viewport")
 public func irisMetalSetViewport(
     _ encoderPtr: OpaquePointer?,
-    _ x: Int32, _ y: Int32, _ width: Int32, _ height: Int32
+    _ x: Int32,
+    _ y: Int32,
+    _ width: Int32,
+    _ height: Int32
 ) {
     guard let ptr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
-    let viewport = MTLViewport(originX: Double(x), originY: Double(y),
-                               width: Double(width), height: Double(height),
-                               znear: 0.0, zfar: 1.0)
+    let viewport = MTLViewport(originX: Double(x), originY: Double(y), width: Double(width), height: Double(height), znear: 0.0, zfar: 1.0)
     encoder.setViewport(viewport)
 }
 
 @_cdecl("iris_metal_set_scissor_rect")
 public func irisMetalSetScissorRect(
     _ encoderPtr: OpaquePointer?,
-    _ x: Int32, _ y: Int32, _ width: Int32, _ height: Int32
+    _ x: Int32,
+    _ y: Int32,
+    _ width: Int32,
+    _ height: Int32
 ) {
     guard let ptr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
@@ -371,6 +388,7 @@ public func irisMetalSetScissorEnabled(_ encoderPtr: OpaquePointer?, _ enabled: 
     // Metal 没有独立的 scissor enable/disable，通过设置全屏 rect 来"禁用"
     guard let ptr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
+
     if enabled != 0 {
         // 保持当前 scissor（调用方应先 setScissorRect）
     } else {
@@ -382,7 +400,10 @@ public func irisMetalSetScissorEnabled(_ encoderPtr: OpaquePointer?, _ enabled: 
 @_cdecl("iris_metal_set_blend_color")
 public func irisMetalSetBlendColor(
     _ encoderPtr: OpaquePointer?,
-    _ r: Float, _ g: Float, _ b: Float, _ a: Float
+    _ r: Float,
+    _ g: Float,
+    _ b: Float,
+    _ a: Float
 ) {
     guard let ptr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
@@ -434,6 +455,7 @@ public func irisMetalSetVertexTexture(
 ) {
     guard let ePtr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ePtr)).takeUnretainedValue()
+
     if let tPtr = texturePtr {
         let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(tPtr)).takeUnretainedValue()
         encoder.setVertexTexture(texture, index: Int(slot))
@@ -450,6 +472,7 @@ public func irisMetalSetFragmentTexture(
 ) {
     guard let ePtr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ePtr)).takeUnretainedValue()
+
     if let tPtr = texturePtr {
         let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(tPtr)).takeUnretainedValue()
         encoder.setFragmentTexture(texture, index: Int(slot))
@@ -519,8 +542,7 @@ public func irisMetalDrawPrimitives(
     guard let ptr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
     let mtlType = mtlPrimitiveTypeFromInt(primitiveType)
-    encoder.drawPrimitives(mtlType, vertexStart: Int(vertexStart),
-                           vertexCount: Int(vertexCount), instanceCount: Int(instanceCount))
+    encoder.drawPrimitives(mtlType, vertexStart: Int(vertexStart), vertexCount: Int(vertexCount), instanceCount: Int(instanceCount))
 }
 
 @_cdecl("iris_metal_draw_indexed_primitives")
@@ -536,11 +558,11 @@ public func irisMetalDrawIndexedPrimitives(
     guard let ePtr = encoderPtr, let ibPtr = indexBufferPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ePtr)).takeUnretainedValue()
     let indexBuffer = Unmanaged<MTLBuffer>.fromOpaque(UnsafeRawPointer(ibPtr)).takeUnretainedValue()
+
     let mtlType = mtlPrimitiveTypeFromInt(primitiveType)
     let mtlIndexType = indexType == 0 ? MTLIndexType.uint16 : MTLIndexType.uint32
-    encoder.drawIndexedPrimitives(mtlType, indexCount: Int(indexCount), indexType: mtlIndexType,
-                                  indexBuffer: indexBuffer, indexBufferOffset: indexBufferOffset,
-                                  instanceCount: Int(instanceCount))
+
+    encoder.drawIndexedPrimitives(mtlType, indexCount: Int(indexCount), indexType: mtlIndexType, indexBuffer: indexBuffer, indexBufferOffset: indexBufferOffset, instanceCount: Int(instanceCount))
 }
 
 // MARK: - Blit 命令
@@ -570,11 +592,7 @@ public func irisMetalBlitCopyBufferToTexture(
     let origin = MTLOrigin(x: Int(destinationOriginX), y: Int(destinationOriginY), z: Int(destinationOriginZ))
     let size = MTLSize(width: Int(sourceSizeWidth), height: Int(sourceSizeHeight), depth: Int(sourceSizeDepth))
 
-    encoder.copy(from: sourceBuffer, sourceOffset: sourceOffset,
-                 sourceBytesPerRow: sourceBytesPerRow, sourceBytesPerImage: sourceBytesPerImage,
-                 sourceSize: size,
-                 to: destTexture, destinationSlice: Int(destinationSlice),
-                 destinationLevel: Int(destinationLevel), destinationOrigin: origin)
+    encoder.copy(from: sourceBuffer, sourceOffset: sourceOffset, sourceBytesPerRow: sourceBytesPerRow, sourceBytesPerImage: sourceBytesPerImage, sourceSize: size, to: destTexture, destinationSlice: Int(destinationSlice), destinationLevel: Int(destinationLevel), destinationOrigin: origin)
 }
 
 @_cdecl("iris_metal_blit_copy_texture_to_buffer")
@@ -602,11 +620,7 @@ public func irisMetalBlitCopyTextureToBuffer(
     let origin = MTLOrigin(x: Int(sourceOriginX), y: Int(sourceOriginY), z: Int(sourceOriginZ))
     let size = MTLSize(width: Int(sourceSizeWidth), height: Int(sourceSizeHeight), depth: Int(sourceSizeDepth))
 
-    encoder.copy(from: sourceTexture, sourceSlice: Int(sourceSlice), sourceLevel: Int(sourceLevel),
-                 sourceOrigin: origin, sourceSize: size,
-                 to: destBuffer, destinationOffset: destinationOffset,
-                 destinationBytesPerRow: destinationBytesPerRow,
-                 destinationBytesPerImage: destinationBytesPerImage)
+    encoder.copy(from: sourceTexture, sourceSlice: Int(sourceSlice), sourceLevel: Int(sourceLevel), sourceOrigin: origin, sourceSize: size, to: destBuffer, destinationOffset: destinationOffset, destinationBytesPerRow: destinationBytesPerImage, destinationBytesPerImage: destinationBytesPerImage)
 }
 
 @_cdecl("iris_metal_blit_generate_mipmaps")
@@ -617,6 +631,7 @@ public func irisMetalBlitGenerateMipmaps(
     guard let ePtr = encoderPtr, let tPtr = texturePtr else { return }
     let encoder = Unmanaged<MTLBlitCommandEncoder>.fromOpaque(UnsafeRawPointer(ePtr)).takeUnretainedValue()
     let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(tPtr)).takeUnretainedValue()
+
     encoder.generateMipmaps(for: texture)
 }
 
@@ -625,7 +640,7 @@ public func irisMetalBlitGenerateMipmaps(
 @_cdecl("iris_metal_compile_glsl_to_msl")
 public func irisMetalCompileGlslToMsl(
     _ glslSource: UnsafePointer<CChar>?,
-    _ stage: Int32,  // 0=vertex, 1=fragment, 2=compute
+    _ stage: Int32, // 0=vertex, 1=fragment, 2=compute
     _ entryPoint: UnsafePointer<CChar>?
 ) -> OpaquePointer? {
     // 本函数在 Java 侧通过 SPIRV-Cross (LWJGL spvc) 完成 GLSL→SPIRV→MSL 转换
@@ -652,6 +667,7 @@ public func irisMetalCompileMslToLibrary(
         // 编译失败，返回 nil（错误信息通过其他方式获取）
         return nil
     }
+
     return OpaquePointer(Unmanaged.passUnretained(library).toOpaque())
 }
 
@@ -663,6 +679,7 @@ public func irisMetalGetFunction(
     guard let lPtr = libraryPtr, let nPtr = name else { return nil }
     let library = Unmanaged<MTLLibrary>.fromOpaque(UnsafeRawPointer(lPtr)).takeUnretainedValue()
     let funcName = String(cString: nPtr)
+
     guard let function = library.makeFunction(name: funcName) else { return nil }
     return OpaquePointer(Unmanaged.passUnretained(function).toOpaque())
 }
@@ -696,6 +713,7 @@ public func irisMetalCreateRenderPipelineState(
         let vf = Unmanaged<MTLFunction>.fromOpaque(UnsafeRawPointer(vfPtr)).takeUnretainedValue()
         desc.vertexFunction = vf
     }
+
     if let ffPtr = fragmentFunctionPtr {
         let ff = Unmanaged<MTLFunction>.fromOpaque(UnsafeRawPointer(ffPtr)).takeUnretainedValue()
         desc.fragmentFunction = ff
@@ -706,16 +724,19 @@ public func irisMetalCreateRenderPipelineState(
         for i in 0..<Int(colorFormatCount) {
             let fmt = formats[i]
             if fmt > 0 {
-                let attachment = desc.colorAttachments[i]
-                attachment.pixelFormat = mtlPixelFormatFromInt(fmt)
-                if blendEnabled != 0 {
-                    attachment.isBlendingEnabled = true
-                    attachment.sourceRGBBlendFactor = mtlBlendFactorFromInt(blendSrcRgb)
-                    attachment.destinationRGBBlendFactor = mtlBlendFactorFromInt(blendDstRgb)
-                    attachment.sourceAlphaBlendFactor = mtlBlendFactorFromInt(blendSrcAlpha)
-                    attachment.destinationAlphaBlendFactor = mtlBlendFactorFromInt(blendDstAlpha)
-                    attachment.rgbBlendOperation = mtlBlendOperationFromInt(blendOpRgb)
-                    attachment.alphaBlendOperation = mtlBlendOperationFromInt(blendOpAlpha)
+                // 修复：使用 if let 解包可选值
+                if let attachment = desc.colorAttachments[i] {
+                    attachment.pixelFormat = mtlPixelFormatFromInt(fmt)
+
+                    if blendEnabled != 0 {
+                        attachment.isBlendingEnabled = true
+                        attachment.sourceRGBBlendFactor = mtlBlendFactorFromInt(blendSrcRgb)
+                        attachment.destinationRGBBlendFactor = mtlBlendFactorFromInt(blendDstRgb)
+                        attachment.sourceAlphaBlendFactor = mtlBlendFactorFromInt(blendSrcAlpha)
+                        attachment.destinationAlphaBlendFactor = mtlBlendFactorFromInt(blendDstAlpha)
+                        attachment.rgbBlendOperation = mtlBlendOperationFromInt(blendOpRgb)
+                        attachment.alphaBlendOperation = mtlBlendOperationFromInt(blendOpAlpha)
+                    }
                 }
             }
         }
@@ -725,6 +746,7 @@ public func irisMetalCreateRenderPipelineState(
     if depthPixelFormat > 0 {
         desc.depthAttachmentPixelFormat = mtlPixelFormatFromInt(depthPixelFormat)
     }
+
     if stencilPixelFormat > 0 {
         desc.stencilAttachmentPixelFormat = mtlPixelFormatFromInt(stencilPixelFormat)
     }
@@ -741,6 +763,7 @@ public func irisMetalCreateRenderPipelineState(
     } catch {
         return nil
     }
+
     return OpaquePointer(Unmanaged.passUnretained(pipeline).toOpaque())
 }
 
@@ -749,9 +772,9 @@ public func irisMetalCreateRenderPipelineState(
 @_cdecl("iris_metal_create_sampler_state")
 public func irisMetalCreateSamplerState(
     _ devicePtr: OpaquePointer?,
-    _ minFilter: Int32,    // 0=nearest, 1=linear
+    _ minFilter: Int32, // 0=nearest, 1=linear
     _ magFilter: Int32,
-    _ mipFilter: Int32,    // 0=not mipmapped, 1=nearest, 2=linear
+    _ mipFilter: Int32, // 0=not mipmapped, 1=nearest, 2=linear
     _ sAddressMode: Int32, // 0=clamp, 1=repeat, 2=mirror_repeat
     _ tAddressMode: Int32,
     _ rAddressMode: Int32,
@@ -765,9 +788,12 @@ public func irisMetalCreateSamplerState(
     desc.magFilter = magFilter == 0 ? .nearest : .linear
 
     switch mipFilter {
-    case 1: desc.mipFilter = .nearest
-    case 2: desc.mipFilter = .linear
-    default: desc.mipFilter = .notMipmapped
+    case 1:
+        desc.mipFilter = .nearest
+    case 2:
+        desc.mipFilter = .linear
+    default:
+        desc.mipFilter = .notMipmapped
     }
 
     desc.sAddressMode = mtlSamplerAddressModeFromInt(sAddressMode)
@@ -805,15 +831,14 @@ private func mtlPixelFormatFromInt(_ value: Int32) -> MTLPixelFormat {
     case 25: return .r16Float
     case 53: return .rg16Float
     case 58: return .rg32Float
-    case 65: return .rgba16Unorm
     case 10: return .r32Float
     case 22: return .r16Snorm
-    case 90: return .rg11B10Float
+    case 90: return .rg11b10Float      // 修正名称：从 rg11B10Float 改为 rg11b10Float
     case 92: return .rgb9e5Float
     case 93: return .bgr10a2Unorm
     case 252: return .depth16Unorm
     case 253: return .depth32Float
-    case 255: return .depth32Float_Stencil8
+    case 255: return .depth32FloatStencil8  // 修正名称：从 depth32Float_Stencil8 改为 depth32FloatStencil8
     case 254: return .stencil8
     default: return .rgba8Unorm
     }
