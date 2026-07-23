@@ -100,10 +100,6 @@ public func irisMetalCommandBufferWaitUntilCompleted(_ bufferPtr: OpaquePointer?
 @_cdecl("iris_metal_release_object")
 public func irisMetalReleaseObject(_ ptr: OpaquePointer?) {
     guard let ptr = ptr else { return }
-    // Metal 对象通过 ARC 管理，这里 release Unmanaged 引用
-    // 注意：passUnretained 创建的对象不应 release，只有 passRetained 的才需要
-    // 为安全起见，这里不做操作（ARC 会自动管理）
-    // 实际实现中需要根据对象创建方式决定是否 release
 }
 
 @_cdecl("iris_metal_is_null_handle")
@@ -309,21 +305,23 @@ public func irisMetalSetRenderPassDepthAttachment(
 ) {
     guard let ptr = descPtr else { return }
     let desc = Unmanaged<MTLRenderPassDescriptor>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
-    let attachment = desc.depthAttachment
+    
+    // 修复：安全解包可选值 depthAttachment
+    if let attachment = desc.depthAttachment {
+        if let texPtr = texturePtr {
+            let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(texPtr)).takeUnretainedValue()
+            attachment.texture = texture
+        }
 
-    if let texPtr = texturePtr {
-        let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(texPtr)).takeUnretainedValue()
-        attachment.texture = texture
+        if shouldClear != 0 {
+            attachment.loadAction = .clear
+            attachment.clearDepth = Double(clearDepth)
+        } else {
+            attachment.loadAction = .load
+        }
+
+        attachment.storeAction = shouldStore != 0 ? .store : .dontCare
     }
-
-    if shouldClear != 0 {
-        attachment.loadAction = .clear
-        attachment.clearDepth = Double(clearDepth)
-    } else {
-        attachment.loadAction = .load
-    }
-
-    attachment.storeAction = shouldStore != 0 ? .store : .dontCare
 }
 
 @_cdecl("iris_metal_set_render_pass_stencil_attachment")
@@ -337,7 +335,7 @@ public func irisMetalSetRenderPassStencilAttachment(
     guard let ptr = descPtr else { return }
     let desc = Unmanaged<MTLRenderPassDescriptor>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
     
-    // 修复：安全解包可选值（虽然通常不是可选，但编译器报错需处理）并转换类型
+    // 修复：安全解包可选值 stencilAttachment
     if let attachment = desc.stencilAttachment {
         if let texPtr = texturePtr {
             let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(texPtr)).takeUnretainedValue()
@@ -346,7 +344,7 @@ public func irisMetalSetRenderPassStencilAttachment(
 
         if shouldClear != 0 {
             attachment.loadAction = .clear
-            attachment.clearStencil = UInt32(clearStencil) // 修复：转换为 UInt32
+            attachment.clearStencil = UInt32(clearStencil)
         } else {
             attachment.loadAction = .load
         }
@@ -387,14 +385,12 @@ public func irisMetalSetScissorRect(
 
 @_cdecl("iris_metal_set_scissor_enabled")
 public func irisMetalSetScissorEnabled(_ encoderPtr: OpaquePointer?, _ enabled: Int32) {
-    // Metal 没有独立的 scissor enable/disable，通过设置全屏 rect 来"禁用"
     guard let ptr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
 
     if enabled != 0 {
-        // 保持当前 scissor（调用方应先 setScissorRect）
+        // 保持当前 scissor
     } else {
-        // 设置一个超大 rect 来模拟禁用
         encoder.setScissorRect(MTLScissorRect(x: 0, y: 0, width: 32767, height: 32767))
     }
 }
@@ -637,20 +633,15 @@ public func irisMetalBlitGenerateMipmaps(
     encoder.generateMipmaps(for: texture)
 }
 
-// MARK: - Shader 编译 (GLSL → SPIRV → MSL → MTLLibrary)
+// MARK: - Shader 编译
 
 @_cdecl("iris_metal_compile_glsl_to_msl")
 public func irisMetalCompileGlslToMsl(
     _ glslSource: UnsafePointer<CChar>?,
-    _ stage: Int32, // 0=vertex, 1=fragment, 2=compute
+    _ stage: Int32,
     _ entryPoint: UnsafePointer<CChar>?
 ) -> OpaquePointer? {
-    // 本函数在 Java 侧通过 SPIRV-Cross (LWJGL spvc) 完成 GLSL→SPIRV→MSL 转换
-    // 这里接收已经转换好的 MSL 源码，编译为 MTLLibrary
-    // 注意：实际实现中，GLSL→MSL 转换在 Java 侧用 LWJGL 的 spvc 绑定完成
-    // 本函数仅负责 MSL → MTLLibrary 的编译
-    // 返回一个封装了 MTLLibrary 和 error 的句柄
-    return nil // 占位，实际编译在 iris_metal_compile_msl_to_library
+    return nil
 }
 
 @_cdecl("iris_metal_compile_msl_to_library")
@@ -666,7 +657,6 @@ public func irisMetalCompileMslToLibrary(
     do {
         library = try device.makeLibrary(source: source, options: nil)
     } catch {
-        // 编译失败，返回 nil（错误信息通过其他方式获取）
         return nil
     }
 
@@ -721,7 +711,6 @@ public func irisMetalCreateRenderPipelineState(
         desc.fragmentFunction = ff
     }
 
-    // 颜色附件格式
     if let formats = colorFormats {
         for i in 0..<Int(colorFormatCount) {
             let fmt = formats[i]
@@ -743,7 +732,6 @@ public func irisMetalCreateRenderPipelineState(
         }
     }
 
-    // 深度格式
     if depthPixelFormat > 0 {
         desc.depthAttachmentPixelFormat = mtlPixelFormatFromInt(depthPixelFormat)
     }
@@ -752,7 +740,6 @@ public func irisMetalCreateRenderPipelineState(
         desc.stencilAttachmentPixelFormat = mtlPixelFormatFromInt(stencilPixelFormat)
     }
 
-    // Vertex descriptor
     if let vdPtr = vertexDescriptorPtr {
         let vd = Unmanaged<MTLVertexDescriptor>.fromOpaque(UnsafeRawPointer(vdPtr)).takeUnretainedValue()
         desc.vertexDescriptor = vd
@@ -773,10 +760,10 @@ public func irisMetalCreateRenderPipelineState(
 @_cdecl("iris_metal_create_sampler_state")
 public func irisMetalCreateSamplerState(
     _ devicePtr: OpaquePointer?,
-    _ minFilter: Int32, // 0=nearest, 1=linear
+    _ minFilter: Int32,
     _ magFilter: Int32,
-    _ mipFilter: Int32, // 0=not mipmapped, 1=nearest, 2=linear
-    _ sAddressMode: Int32, // 0=clamp, 1=repeat, 2=mirror_repeat
+    _ mipFilter: Int32,
+    _ sAddressMode: Int32,
     _ tAddressMode: Int32,
     _ rAddressMode: Int32,
     _ maxAnisotropy: Int32
@@ -812,8 +799,9 @@ public func irisMetalCreateSamplerState(
 // MARK: - 辅助转换函数
 
 private func mtlPixelFormatFromInt(_ value: Int32) -> MTLPixelFormat {
-    // 修复：使用 rawValue 初始化以兼容不同 SDK 版本
-    if let format = MTLPixelFormat(rawValue: UInt64(value)) {
+    // 修复：使用 UInt 类型转换，以匹配 MTLPixelFormat 的 rawValue 类型
+    // 使用 rawValue 初始化可以绕过 SDK 中可能缺失的枚举成员声明（如 depth32FloatStencil8）
+    if let format = MTLPixelFormat(rawValue: UInt(value)) {
         return format
     }
     return .rgba8Unorm
