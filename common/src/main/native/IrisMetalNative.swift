@@ -336,21 +336,23 @@ public func irisMetalSetRenderPassStencilAttachment(
 ) {
     guard let ptr = descPtr else { return }
     let desc = Unmanaged<MTLRenderPassDescriptor>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
-    let attachment = desc.stencilAttachment
+    
+    // 修复：安全解包可选值（虽然通常不是可选，但编译器报错需处理）并转换类型
+    if let attachment = desc.stencilAttachment {
+        if let texPtr = texturePtr {
+            let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(texPtr)).takeUnretainedValue()
+            attachment.texture = texture
+        }
 
-    if let texPtr = texturePtr {
-        let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(texPtr)).takeUnretainedValue()
-        attachment.texture = texture
+        if shouldClear != 0 {
+            attachment.loadAction = .clear
+            attachment.clearStencil = UInt32(clearStencil) // 修复：转换为 UInt32
+        } else {
+            attachment.loadAction = .load
+        }
+
+        attachment.storeAction = shouldStore != 0 ? .store : .dontCare
     }
-
-    if shouldClear != 0 {
-        attachment.loadAction = .clear
-        attachment.clearStencil = clearStencil
-    } else {
-        attachment.loadAction = .load
-    }
-
-    attachment.storeAction = shouldStore != 0 ? .store : .dontCare
 }
 
 // MARK: - Encoder 状态设置
@@ -407,7 +409,6 @@ public func irisMetalSetBlendColor(
 ) {
     guard let ptr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
-    // 修复：使用新的 API 名称
     encoder.setBlendColor(red: r, green: g, blue: b, alpha: a)
 }
 
@@ -543,7 +544,6 @@ public func irisMetalDrawPrimitives(
     guard let ptr = encoderPtr else { return }
     let encoder = Unmanaged<MTLRenderCommandEncoder>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
     let mtlType = mtlPrimitiveTypeFromInt(primitiveType)
-    // 修复：添加 type: 标签
     encoder.drawPrimitives(type: mtlType, vertexStart: Int(vertexStart), vertexCount: Int(vertexCount), instanceCount: Int(instanceCount))
 }
 
@@ -564,7 +564,6 @@ public func irisMetalDrawIndexedPrimitives(
     let mtlType = mtlPrimitiveTypeFromInt(primitiveType)
     let mtlIndexType = indexType == 0 ? MTLIndexType.uint16 : MTLIndexType.uint32
 
-    // 修复：添加 type: 标签
     encoder.drawIndexedPrimitives(type: mtlType, indexCount: Int(indexCount), indexType: mtlIndexType, indexBuffer: indexBuffer, indexBufferOffset: indexBufferOffset, instanceCount: Int(instanceCount))
 }
 
@@ -727,7 +726,6 @@ public func irisMetalCreateRenderPipelineState(
         for i in 0..<Int(colorFormatCount) {
             let fmt = formats[i]
             if fmt > 0 {
-                // 修复：使用 if let 解包可选值
                 if let attachment = desc.colorAttachments[i] {
                     attachment.pixelFormat = mtlPixelFormatFromInt(fmt)
 
@@ -814,37 +812,11 @@ public func irisMetalCreateSamplerState(
 // MARK: - 辅助转换函数
 
 private func mtlPixelFormatFromInt(_ value: Int32) -> MTLPixelFormat {
-    switch value {
-    case 30: return .rgba8Unorm
-    case 31: return .rgba8Unorm_srgb
-    case 80: return .bgra8Unorm
-    case 81: return .bgra8Unorm_srgb
-    case 65: return .rgba16Unorm
-    case 20: return .rg8Unorm
-    case 32: return .rgba8Snorm
-    case 67: return .rgba16Snorm
-    case 45: return .rgba8Uint
-    case 46: return .rgba8Sint
-    case 50: return .rgba16Uint
-    case 51: return .rgba16Sint
-    case 55: return .rgba16Float
-    case 60: return .rgba32Uint
-    case 61: return .rgba32Sint
-    case 62: return .rgba32Float
-    case 25: return .r16Float
-    case 53: return .rg16Float
-    case 58: return .rg32Float
-    case 10: return .r32Float
-    case 22: return .r16Snorm
-    case 90: return .rg11b10Float      // 修正名称：从 rg11B10Float 改为 rg11b10Float
-    case 92: return .rgb9e5Float
-    case 93: return .bgr10a2Unorm
-    case 252: return .depth16Unorm
-    case 253: return .depth32Float
-    case 255: return .depth32FloatStencil8  // 修正名称：从 depth32Float_Stencil8 改为 depth32FloatStencil8
-    case 254: return .stencil8
-    default: return .rgba8Unorm
+    // 修复：使用 rawValue 初始化以兼容不同 SDK 版本
+    if let format = MTLPixelFormat(rawValue: UInt64(value)) {
+        return format
     }
+    return .rgba8Unorm
 }
 
 private func mtlPrimitiveTypeFromInt(_ value: Int32) -> MTLPrimitiveType {
