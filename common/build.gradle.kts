@@ -9,7 +9,6 @@ repositories {
     mavenLocal()
     maven("https://maven.parchmentmc.org/")
     maven("https://maven.caffeinemc.net/releases")
-
     exclusiveContent {
         forRepository {
             maven {
@@ -32,16 +31,14 @@ val FABRIC_API_VERSION: String by rootProject.extra
 sourceSets.create("desktop")
 
 buildConfig {
-    className("BuildConfig")   // forces the class name. Defaults to 'BuildConfig'
-    packageName("net.irisshaders.iris")  // forces the package. Defaults to '${project.group}'
+    className("BuildConfig") // forces the class name. Defaults to 'BuildConfig'
+    packageName("net.irisshaders.iris") // forces the package. Defaults to '${project.group}'
     useJavaOutput()
-
     // TODO hook this up
     buildConfigField("IS_SHARED_BETA", false)
     buildConfigField("ACTIVATE_RENDERDOC", false)
     buildConfigField("BETA_TAG", "")
     buildConfigField("BETA_VERSION", 0)
-
     sourceSets.getByName("desktop") {
         buildConfigField("IS_SHARED_BETA", false)
     }
@@ -49,18 +46,13 @@ buildConfig {
 
 dependencies {
     minecraft(group = "com.mojang", name = "minecraft", version = MINECRAFT_VERSION)
-
     implementation("net.fabricmc:fabric-loader:$FABRIC_LOADER_VERSION")
-
     compileOnly("net.fabricmc.fabric-api:fabric-renderer-api-v1:3.2.9+1172e897d7")
-
     implementation(SODIUM_DEPENDENCY_NEO)
     compileOnly("org.antlr:antlr4-runtime:4.13.1")
     compileOnly("io.github.douira:glsl-transformer:3.0.0-pre3")
     compileOnly("org.anarres:jcpp:1.4.14")
-
     compileOnly(files(rootDir.resolve("DHApi.jar")))
-
     // Metallum - 提供 Metal 设备环境（compileOnly，运行时由用户安装）
     // metallum 通过 Modrinth maven 提供
     compileOnly("maven.modrinth:metallum:0.0.21")
@@ -115,25 +107,21 @@ sourceSets {
             compileClasspath += main.compileClasspath
         }
     }
-
     vendored.apply {
         java {
             compileClasspath += main.compileClasspath
         }
     }
-
     api.apply {
         java {
             compileClasspath += main.compileClasspath
         }
     }
-
     desktop.apply {
         java {
             srcDir("src/desktop/java")
         }
     }
-
     main.apply {
         java {
             compileClasspath += headers.output
@@ -156,11 +144,10 @@ loom {
         defaultRefmapName = "iris.refmap.json"
         useLegacyMixinAp = false
     }
-
     accessWidenerPath = file("src/main/resources/iris.accesswidener")
-
     mods {
-        val main by creating { // to match the default mod generated for Forge
+        val main by creating {
+            // to match the default mod generated for Forge
             sourceSet("vendored")
             sourceSet("main")
         }
@@ -171,9 +158,7 @@ loom {
 // 在 macOS 上编译 IrisMetalNative.swift 为 libiris_metal.dylib
 // 非 macOS 环境下跳过（Iris 会回退到 OpenGL 路径）
 val buildMetalNative by tasks.registering(Exec::class) {
-    onlyIf {
-        org.gradle.internal.os.OperatingSystem.current().isMacOsX
-    }
+    onlyIf { org.gradle.internal.os.OperatingSystem.current().isMacOsX }
     workingDir = projectDir
     val nativeSource = file("src/main/native/IrisMetalNative.swift")
     val outputDir = file("src/main/resources/natives/macos")
@@ -181,15 +166,14 @@ val buildMetalNative by tasks.registering(Exec::class) {
     doFirst {
         outputDir.mkdirs()
         commandLine(
-            "swiftc", "-O",
-            "-target", "arm64-apple-macos14.0",
+            "swiftc", "-O", "-target", "arm64-apple-macos14.0",
             "-framework", "Foundation",
             "-framework", "Metal",
             "-framework", "MetalKit",
             "-framework", "QuartzCore",
-            "-emit-library",
-            nativeSource.absolutePath,
-            "-o", java.io.File(outputDir, "libiris_metal.dylib").absolutePath
+            "-emit-library", nativeSource.absolutePath,
+            // 修复：使用 File 代替 java.io.File，避免 Unresolved reference
+            "-o", File(outputDir, "libiris_metal.dylib").absolutePath
         )
     }
 }
@@ -209,22 +193,17 @@ tasks {
         sourceCompatibility = JavaVersion.VERSION_1_8.toString()
         targetCompatibility = JavaVersion.VERSION_1_8.toString()
     }
-
     jar {
         from(rootDir.resolve("LICENSE.md"))
-
         val vendored = sourceSets.getByName("vendored")
         from(vendored.output.classesDirs)
         from(vendored.output.resourcesDir)
-
         val api = sourceSets.getByName("api")
         from(api.output.classesDirs)
         from(api.output.resourcesDir)
-
         val desktop = sourceSets.getByName("desktop")
         from(desktop.output.classesDirs)
         from(desktop.output.resourcesDir)
-
         manifest.attributes["Main-Class"] = "net.irisshaders.iris.LaunchWarn"
     }
 }
