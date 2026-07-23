@@ -1,0 +1,71 @@
+workflows:
+  build-iris-metal:
+    name: Build Iris Metal Mod
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    environment:
+      groups:
+        - common
+
+    scripts:
+      - name: Install JDK 25 (Temurin)
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          # 下载 Temurin JDK 25 (macOS aarch64)
+          curl -L --fail -o /tmp/jdk25.tar.gz \
+            "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25%2B36/OpenJDK25U-jdk_aarch64_mac_hotspot_25_36.tar.gz"
+          mkdir -p "$HOME/jdk25"
+          tar -xzf /tmp/jdk25.tar.gz -C "$HOME/jdk25" --strip-components=1
+          export JAVA_HOME="$HOME/jdk25/Contents/Home"
+          # 写入 CM_ENV 供后续步骤使用
+          echo "export JAVA_HOME=$JAVA_HOME" >> "$CM_ENV"
+          echo "export PATH=$JAVA_HOME/bin:\$PATH" >> "$CM_ENV"
+          "$JAVA_HOME/bin/java" -version
+
+      - name: Compile Swift Metal native library
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          # native 源码位于 common 模块
+          NATIVE_SRC="common/src/main/native/IrisMetalNative.swift"
+          OUT_DIR="common/src/main/resources/natives/macos"
+          mkdir -p "$OUT_DIR"
+          # 编译为 libiris_metal.dylib（arm64, macOS 14.0+）
+          swiftc -O \
+            -target arm64-apple-macos14.0 \
+            -framework Foundation \
+            -framework Metal \
+            -framework MetalKit \
+            -framework QuartzCore \
+            -emit-library \
+            "$NATIVE_SRC" \
+            -o "$OUT_DIR/libiris_metal.dylib"
+          echo "=== Native library built ==="
+          ls -la "$OUT_DIR/libiris_metal.dylib"
+          file "$OUT_DIR/libiris_metal.dylib"
+
+      - name: Grant execute permission for gradlew
+        script: |
+          cd "$CM_BUILD_DIR"
+          chmod +x ./gradlew
+
+      - name: Build Iris Fabric mod with Metal backend
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          source "$CM_ENV"
+          echo "Using JAVA_HOME: $JAVA_HOME"
+          "$JAVA_HOME/bin/java" -version
+          # 使用项目自带的 Gradle Wrapper（9.5.0）构建 fabric 子项目
+          # fabric-loom 会自动从 Modrinth maven 拉取 metallum、sodium 等依赖
+          # --no-daemon 适配 CI 环境
+          ./gradlew :fabric:build \
+            --no-daemon \
+            --stacktrace \
+            -Dorg.gradle.java.home="$JAVA_HOME" \
+            -Dorg.gradle.jvmargs="-Xmx4G"
+
+    artifacts:
+      - build/libs/*.jar
