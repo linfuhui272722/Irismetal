@@ -278,20 +278,22 @@ public func irisMetalSetRenderPassColorAttachment(
 ) {
     guard let ptr = descPtr else { return }
     let desc = Unmanaged<MTLRenderPassDescriptor>.fromOpaque(UnsafeRawPointer(ptr)).takeUnretainedValue()
-    let attachment = desc.colorAttachments[Int(index)]
+    
+    // 修复：安全解包可选值 colorAttachments[index]
+    if let attachment = desc.colorAttachments[Int(index)] {
+        if let texPtr = texturePtr {
+            let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(texPtr)).takeUnretainedValue()
+            attachment.texture = texture
+        }
 
-    if let texPtr = texturePtr {
-        let texture = Unmanaged<MTLTexture>.fromOpaque(UnsafeRawPointer(texPtr)).takeUnretainedValue()
-        attachment.texture = texture
-    }
-
-    if shouldClear != 0 {
-        attachment.loadAction = .clear
-        attachment.storeAction = .store
-        attachment.clearColor = MTLClearColor(red: Double(clearR), green: Double(clearG), blue: Double(clearB), alpha: Double(clearA))
-    } else {
-        attachment.loadAction = .load
-        attachment.storeAction = .store
+        if shouldClear != 0 {
+            attachment.loadAction = .clear
+            attachment.storeAction = .store
+            attachment.clearColor = MTLClearColor(red: Double(clearR), green: Double(clearG), blue: Double(clearB), alpha: Double(clearA))
+        } else {
+            attachment.loadAction = .load
+            attachment.storeAction = .store
+        }
     }
 }
 
@@ -799,8 +801,7 @@ public func irisMetalCreateSamplerState(
 // MARK: - 辅助转换函数
 
 private func mtlPixelFormatFromInt(_ value: Int32) -> MTLPixelFormat {
-    // 修复：使用 UInt 类型转换，以匹配 MTLPixelFormat 的 rawValue 类型
-    // 使用 rawValue 初始化可以绕过 SDK 中可能缺失的枚举成员声明（如 depth32FloatStencil8）
+    // 修复：使用 UInt 类型转换
     if let format = MTLPixelFormat(rawValue: UInt(value)) {
         return format
     }
