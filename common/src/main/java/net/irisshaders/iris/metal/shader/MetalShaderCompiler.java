@@ -7,7 +7,10 @@ import net.irisshaders.iris.gl.shader.ShaderType;
 import net.irisshaders.iris.metal.bridge.IrisMetalNativeBridge;
 import org.jspecify.annotations.Nullable;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.lang.foreign.MemorySegment;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -168,7 +171,21 @@ public final class MetalShaderCompiler {
         }
 
         java.lang.reflect.Method getSpirvMethod = intermediaryClass.getMethod("getSpirv");
-        java.nio.ByteBuffer spirvBuffer = (java.nio.ByteBuffer) getSpirvMethod.invoke(intermediary);
+        java.nio.ByteBuffer spirvBuffer;
+        try {
+            spirvBuffer = (java.nio.ByteBuffer) getSpirvMethod.invoke(intermediary);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            Iris.logger.error("GlslCompiler.getSpirv failed for {}: {}", name, cause != null ? cause.getMessage() : "null");
+            if (cause != null) {
+                Iris.logger.error("Exception type: {}", cause.getClass().getName());
+                // 打印完整的 stack trace
+                StringWriter sw = new StringWriter();
+                cause.printStackTrace(new PrintWriter(sw));
+                Iris.logger.error("Full stack trace:\n{}", sw.toString());
+            }
+            throw new Exception("GlslCompiler.getSpirv failed", cause);
+        }
 
         if (spirvBuffer == null || !spirvBuffer.hasRemaining()) {
             throw new Exception("GlslCompiler.getSpirv returned null or empty buffer for " + name);
