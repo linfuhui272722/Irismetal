@@ -116,6 +116,7 @@ public final class IrisMetalNativeBridge {
     // ===== Render Pipeline (编译后的 MTLRenderPipelineState) =====
     private static MethodHandle compileRenderPipeline;
     private static MethodHandle compileComputePipeline;
+    private static MethodHandle createShaderFunction;
     private static MethodHandle renderPipelineDescriptorCreate;
     private static MethodHandle renderPipelineDescriptorSetCompiledFunctions;
     private static MethodHandle renderPipelineDescriptorSetVertexDescriptor;
@@ -300,6 +301,10 @@ public final class IrisMetalNativeBridge {
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         compileComputePipeline = optionalDowncall(lookup, "metallum_MTLDevice_makeComputePipelineState",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+        
+        // Shader Function (metallum_create_shader_function)
+        createShaderFunction = optionalDowncall(lookup, "metallum_create_shader_function",
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         
         // Render Pipeline Descriptor
         renderPipelineDescriptorCreate = optionalDowncall(lookup, "metallum_MTLRenderPipelineDescriptor_create",
@@ -1500,13 +1505,29 @@ public final class IrisMetalNativeBridge {
 
     // ===== Shader/Pipeline编译方法 =====
     public static MemorySegment compileMslToLibrary(MemorySegment device, String mslSource, String label) {
-        // 简化实现：返回NULL表示编译失败
-        return MemorySegment.NULL;
+        if (createShaderFunction == null || isNullHandle(device)) {
+            return MemorySegment.NULL;
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment source = allocateUtf8String(arena, mslSource);
+            MemorySegment entry = allocateUtf8String(arena, "main0");
+            MemorySegment function = (MemorySegment) createShaderFunction.invoke(device, source, entry);
+            return function;
+        } catch (Throwable t) {
+            Iris.logger.warn("Failed to compile MSL to library: " + label, t);
+            return MemorySegment.NULL;
+        }
     }
 
     public static MemorySegment getLibraryFunction(MemorySegment library, String functionName) {
-        // 简化实现
-        return MemorySegment.NULL;
+        // metallum_create_shader_function 已经返回了编译好的函数，不需要再从 library 获取
+        // 如果 library 不是 NULL 但我们需要获取特定名称的函数，这里返回 library 作为函数
+        if (isNullHandle(library)) {
+            return MemorySegment.NULL;
+        }
+        // 对于 metallum，编译 shader source 时已经指定了入口点，返回 library 本身即可
+        // Metal pipeline 会使用这个作为 function
+        return library;
     }
 
     public static MemorySegment createRenderPipelineDescriptor() {

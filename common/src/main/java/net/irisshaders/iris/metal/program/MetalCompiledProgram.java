@@ -65,7 +65,6 @@ public final class MetalCompiledProgram implements AutoCloseable {
 
     private MetalCompiledProgram(String name, MemorySegment pipelineState,
                                  MemorySegment vertexFunction, MemorySegment fragmentFunction,
-                                 MemorySegment library,
                                  MetalUniformBlock uniformBlock,
                                  MetalProgramSamplers samplers,
                                  MetalProgramImages images,
@@ -75,7 +74,7 @@ public final class MetalCompiledProgram implements AutoCloseable {
         this.pipelineState = pipelineState;
         this.vertexFunction = vertexFunction;
         this.fragmentFunction = fragmentFunction;
-        this.library = library;
+        this.library = MemorySegment.NULL;  // metallum doesn't need separate library
         this.uniformBlock = uniformBlock;
         this.samplers = samplers;
         this.images = images;
@@ -108,47 +107,31 @@ public final class MetalCompiledProgram implements AutoCloseable {
 
         // 1. 编译 vertex shader
         MemorySegment vertexFunction = MemorySegment.NULL;
-        MemorySegment vertexLibrary = MemorySegment.NULL;
         if (vertexSource != null) {
             MetalShaderCompiler.CompileResult vr = MetalShaderCompiler.compileGlslToMsl(
                     name + ".vsh", ShaderType.VERTEX, vertexSource);
             if (!vr.isSuccess()) {
-                throw new RuntimeException("Vertex shader compilation failed: " + vr.getError());
+                throw new RuntimeException("Vertex shader compilation failed: " + (vr.getError() != null ? vr.getError() : "unknown error"));
             }
-            vertexLibrary = IrisMetalNativeBridge.compileMslToLibrary(deviceHandle, vr.getMslSource(), name + ".vsh");
-            if (IrisMetalNativeBridge.isNullHandle(vertexLibrary)) {
-                throw new RuntimeException("Failed to compile vertex MSL to MTLLibrary: " + name);
-            }
-            vertexFunction = IrisMetalNativeBridge.getLibraryFunction(vertexLibrary, "vertexMain");
+            vertexFunction = IrisMetalNativeBridge.compileMslToLibrary(deviceHandle, vr.getMslSource(), name + ".vsh");
             if (IrisMetalNativeBridge.isNullHandle(vertexFunction)) {
-                IrisMetalNativeBridge.releaseObject(vertexLibrary);
-                throw new RuntimeException("Vertex function 'vertexMain' not found in library: " + name);
+                throw new RuntimeException("Failed to compile vertex MSL to MTLLibrary: " + name);
             }
         }
 
         // 2. 编译 fragment shader
         MemorySegment fragmentFunction = MemorySegment.NULL;
-        MemorySegment fragmentLibrary = MemorySegment.NULL;
         if (fragmentSource != null) {
             MetalShaderCompiler.CompileResult fr = MetalShaderCompiler.compileGlslToMsl(
                     name + ".fsh", ShaderType.FRAGMENT, fragmentSource);
             if (!fr.isSuccess()) {
-                if (!IrisMetalNativeBridge.isNullHandle(vertexLibrary)) IrisMetalNativeBridge.releaseObject(vertexLibrary);
                 if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
-                throw new RuntimeException("Fragment shader compilation failed: " + fr.getError());
+                throw new RuntimeException("Fragment shader compilation failed: " + (fr.getError() != null ? fr.getError() : "unknown error"));
             }
-            fragmentLibrary = IrisMetalNativeBridge.compileMslToLibrary(deviceHandle, fr.getMslSource(), name + ".fsh");
-            if (IrisMetalNativeBridge.isNullHandle(fragmentLibrary)) {
-                if (!IrisMetalNativeBridge.isNullHandle(vertexLibrary)) IrisMetalNativeBridge.releaseObject(vertexLibrary);
+            fragmentFunction = IrisMetalNativeBridge.compileMslToLibrary(deviceHandle, fr.getMslSource(), name + ".fsh");
+            if (IrisMetalNativeBridge.isNullHandle(fragmentFunction)) {
                 if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
                 throw new RuntimeException("Failed to compile fragment MSL to MTLLibrary: " + name);
-            }
-            fragmentFunction = IrisMetalNativeBridge.getLibraryFunction(fragmentLibrary, "fragmentMain");
-            if (IrisMetalNativeBridge.isNullHandle(fragmentFunction)) {
-                IrisMetalNativeBridge.releaseObject(fragmentLibrary);
-                if (!IrisMetalNativeBridge.isNullHandle(vertexLibrary)) IrisMetalNativeBridge.releaseObject(vertexLibrary);
-                if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
-                throw new RuntimeException("Fragment function 'fragmentMain' not found in library: " + name);
             }
         }
 
@@ -156,9 +139,7 @@ public final class MetalCompiledProgram implements AutoCloseable {
         MemorySegment pipelineDescriptor = IrisMetalNativeBridge.createRenderPipelineDescriptor();
         
         if (IrisMetalNativeBridge.isNullHandle(pipelineDescriptor)) {
-            if (!IrisMetalNativeBridge.isNullHandle(vertexLibrary)) IrisMetalNativeBridge.releaseObject(vertexLibrary);
             if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
-            if (!IrisMetalNativeBridge.isNullHandle(fragmentLibrary)) IrisMetalNativeBridge.releaseObject(fragmentLibrary);
             if (!IrisMetalNativeBridge.isNullHandle(fragmentFunction)) IrisMetalNativeBridge.releaseObject(fragmentFunction);
             throw new RuntimeException("Failed to create render pipeline descriptor: " + name);
         }
@@ -196,9 +177,7 @@ public final class MetalCompiledProgram implements AutoCloseable {
         IrisMetalNativeBridge.releaseObject(pipelineDescriptor);
 
         if (IrisMetalNativeBridge.isNullHandle(pipelineState)) {
-            if (!IrisMetalNativeBridge.isNullHandle(vertexLibrary)) IrisMetalNativeBridge.releaseObject(vertexLibrary);
             if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
-            if (!IrisMetalNativeBridge.isNullHandle(fragmentLibrary)) IrisMetalNativeBridge.releaseObject(fragmentLibrary);
             if (!IrisMetalNativeBridge.isNullHandle(fragmentFunction)) IrisMetalNativeBridge.releaseObject(fragmentFunction);
             throw new RuntimeException("Failed to create render pipeline state: " + name);
         }
@@ -210,10 +189,9 @@ public final class MetalCompiledProgram implements AutoCloseable {
         MetalProgramSamplers samplers = MetalProgramSamplers.reflectFromPipeline(pipelineState, vertexFunction, fragmentFunction);
         MetalProgramImages images = MetalProgramImages.reflectFromPipeline(pipelineState, vertexFunction, fragmentFunction);
 
-        // library 和 function 的引用计数：pipeline state 会持有它们，但我们仍需保留引用
+        // function 的引用计数：pipeline state 会持有它们，但我们仍需保留引用
         // 防止过早释放。在 close() 时统一释放。
         return new MetalCompiledProgram(name, pipelineState, vertexFunction, fragmentFunction,
-                vertexLibrary, // 只保留 vertex library（fragment library 合并到 vertex library 或单独管理）
                 uniformBlock, samplers, images, colorFormats, depthFormat);
     }
 
