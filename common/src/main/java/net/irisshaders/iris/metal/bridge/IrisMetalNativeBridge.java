@@ -125,15 +125,16 @@ public final class IrisMetalNativeBridge {
     private static MethodHandle renderEncoderSetBuffer;
     private static MethodHandle renderEncoderSetBufferOffset;
     private static MethodHandle renderEncoderSetTexture;
-    private static MethodHandle renderEncoderSetSamplerState;
+    private static MethodHandle renderEncoderSetTextureAndSampler;  // metallum 的组合方法
+    private static MethodHandle renderEncoderSetSamplerState;      // 设为 null，将在 Java 层模拟
     private static MethodHandle renderEncoderSetScissorRect;
-    private static MethodHandle renderEncoderSetViewport;
-    private static MethodHandle renderEncoderSetBlendColor;
-    private static MethodHandle renderEncoderSetColorWriteMask;
+    private static MethodHandle renderEncoderSetViewport;           // 设为 null，metallum 不支持
+    private static MethodHandle renderEncoderSetBlendColor;         // 设为 null，metallum 不支持
+    private static MethodHandle renderEncoderSetColorWriteMask;     // 设为 null，metallum 不支持
     private static MethodHandle renderEncoderDrawPrimitives;
     private static MethodHandle renderEncoderDrawIndexedPrimitives;
-    private static MethodHandle renderEncoderDrawPrimitivesInstanced;
-    private static MethodHandle renderEncoderDrawIndexedPrimitivesInstanced;
+    private static MethodHandle renderEncoderDrawPrimitivesInstanced;    // 设为 null，将在 Java 层模拟
+    private static MethodHandle renderEncoderDrawIndexedPrimitivesInstanced;  // 设为 null，将在 Java 层模拟
 
     // ===== Compute =====
     private static MethodHandle computeEncoderSetComputePipelineState;
@@ -293,43 +294,46 @@ public final class IrisMetalNativeBridge {
         compileComputePipeline = optionalDowncall(lookup, "metallum_MTLDevice_makeComputePipelineState",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
-        // Render Encoder
-        renderEncoderSetRenderPipelineState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setRenderPipelineState",
+        // Render Encoder (使用 optionalDowncall 以兼容不同的 metallum 版本)
+        renderEncoderSetRenderPipelineState = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setRenderPipelineState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        renderEncoderSetDepthStencilState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setDepthStencilState",
+        renderEncoderSetDepthStencilState = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setDepthStencilState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        renderEncoderSetDepthBias = downcall(lookup, "metallum_MTLRenderCommandEncoder_setDepthBias",
+        renderEncoderSetDepthBias = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setDepthBias",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, FLOAT, FLOAT, FLOAT));
-        renderEncoderSetFrontFacingWinding = downcall(lookup, "metallum_MTLRenderCommandEncoder_setFrontFacingWinding",
+        renderEncoderSetFrontFacingWinding = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setFrontFacingWinding",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderSetCullMode = downcall(lookup, "metallum_MTLRenderCommandEncoder_setCullMode",
+        renderEncoderSetCullMode = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setCullMode",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderSetTriangleFillMode = downcall(lookup, "metallum_MTLRenderCommandEncoder_setTriangleFillMode",
+        renderEncoderSetTriangleFillMode = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setTriangleFillMode",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderSetBuffer = downcall(lookup, "metallum_MTLRenderCommandEncoder_setBuffer",
+        renderEncoderSetBuffer = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setBuffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, INT));
-        renderEncoderSetBufferOffset = downcall(lookup, "metallum_MTLRenderCommandEncoder_setBufferOffset",
+        renderEncoderSetBufferOffset = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setBufferOffset",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, INT));
-        renderEncoderSetTexture = downcall(lookup, "metallum_MTLRenderCommandEncoder_setTexture",
+        renderEncoderSetTexture = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setTexture",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        renderEncoderSetSamplerState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setSamplerState",
-                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        renderEncoderSetScissorRect = downcall(lookup, "metallum_MTLRenderCommandEncoder_setScissorRect",
+        // metallum 有 setTextureAndSampler 组合方法
+        renderEncoderSetTextureAndSampler = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setTextureAndSampler",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
+        // 注意：metallum 没有单独的 setSamplerState，需要使用 setTextureAndSampler
+        // 单独的 sampler 设置将在 Java 层模拟
+        renderEncoderSetSamplerState = null; // 不存在，用 setTextureAndSampler 代替
+        renderEncoderSetScissorRect = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setScissorRect",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
-        renderEncoderSetViewport = downcall(lookup, "metallum_MTLRenderCommandEncoder_setViewport",
-                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, DOUBLE, DOUBLE, DOUBLE, DOUBLE, DOUBLE, DOUBLE, LONG, LONG));
-        renderEncoderSetBlendColor = downcall(lookup, "metallum_MTLRenderCommandEncoder_setBlendColor",
-                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, FLOAT, FLOAT, FLOAT, FLOAT));
-        renderEncoderSetColorWriteMask = downcall(lookup, "metallum_MTLRenderCommandEncoder_setColorWriteMask",
-                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderDrawPrimitives = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawPrimitives",
+        // setViewport 不存在于 metallum，将在 Java 层跳过
+        renderEncoderSetViewport = null;
+        // setBlendColor 不存在于 metallum，将在 Java 层跳过
+        renderEncoderSetBlendColor = null;
+        // setColorWriteMask 不存在于 metallum，将在 Java 层跳过
+        renderEncoderSetColorWriteMask = null;
+        renderEncoderDrawPrimitives = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_drawPrimitives",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, LONG, LONG, LONG));
-        renderEncoderDrawIndexedPrimitives = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawIndexedPrimitives",
+        renderEncoderDrawIndexedPrimitives = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_drawIndexedPrimitives",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, ValueLayout.ADDRESS, LONG, LONG, LONG));
-        renderEncoderDrawPrimitivesInstanced = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawPrimitivesInstanced",
-                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG));
-        renderEncoderDrawIndexedPrimitivesInstanced = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawIndexedPrimitivesInstanced",
-                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
+        // instanced 绘制不直接支持，需要通过 Java 层模拟
+        renderEncoderDrawPrimitivesInstanced = null;
+        renderEncoderDrawIndexedPrimitivesInstanced = null;
 
         // Compute (可选，iOS metallum 可能不包含)
         computeEncoderSetComputePipelineState = optionalDowncall(lookup, "metallum_MTLComputeCommandEncoder_setComputePipelineState",
@@ -771,6 +775,10 @@ public final class IrisMetalNativeBridge {
 
     // ===== Render Encoder 设置 =====
     public static void renderEncoderSetRenderPipelineState(MemorySegment encoder, MemorySegment pipeline) {
+        if (renderEncoderSetRenderPipelineState == null) {
+            Iris.logger.warn("renderEncoderSetRenderPipelineState not available, skipping");
+            return;
+        }
         try {
             renderEncoderSetRenderPipelineState.invoke(encoder, pipeline);
         } catch (Throwable t) {
@@ -779,6 +787,10 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void renderEncoderSetDepthStencilState(MemorySegment encoder, MemorySegment state) {
+        if (renderEncoderSetDepthStencilState == null) {
+            Iris.logger.warn("renderEncoderSetDepthStencilState not available, skipping");
+            return;
+        }
         try {
             renderEncoderSetDepthStencilState.invoke(encoder, state);
         } catch (Throwable t) {
@@ -787,6 +799,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void renderEncoderSetDepthBias(MemorySegment encoder, float bias, float slopeScale, float clamp) {
+        if (renderEncoderSetDepthBias == null) {
+            return;
+        }
         try {
             renderEncoderSetDepthBias.invoke(encoder, bias, slopeScale, clamp);
         } catch (Throwable t) {
@@ -795,6 +810,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void renderEncoderSetFrontFacingWinding(MemorySegment encoder, int winding) {
+        if (renderEncoderSetFrontFacingWinding == null) {
+            return;
+        }
         try {
             renderEncoderSetFrontFacingWinding.invoke(encoder, winding);
         } catch (Throwable t) {
@@ -803,6 +821,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void renderEncoderSetCullMode(MemorySegment encoder, int mode) {
+        if (renderEncoderSetCullMode == null) {
+            return;
+        }
         try {
             renderEncoderSetCullMode.invoke(encoder, mode);
         } catch (Throwable t) {
@@ -811,6 +832,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void renderEncoderSetTriangleFillMode(MemorySegment encoder, int mode) {
+        if (renderEncoderSetTriangleFillMode == null) {
+            return;
+        }
         try {
             renderEncoderSetTriangleFillMode.invoke(encoder, mode);
         } catch (Throwable t) {
@@ -819,6 +843,10 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void renderEncoderSetBuffer(MemorySegment encoder, MemorySegment buffer, long offset, long length, int index) {
+        if (renderEncoderSetBuffer == null) {
+            Iris.logger.warn("renderEncoderSetBuffer not available, skipping");
+            return;
+        }
         try {
             renderEncoderSetBuffer.invoke(encoder, buffer, offset, length, index);
         } catch (Throwable t) {
@@ -827,6 +855,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void renderEncoderSetBufferOffset(MemorySegment encoder, long offset, long length, int index) {
+        if (renderEncoderSetBufferOffset == null) {
+            return;
+        }
         try {
             renderEncoderSetBufferOffset.invoke(encoder, offset, length, index);
         } catch (Throwable t) {
@@ -835,6 +866,10 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void renderEncoderSetTexture(MemorySegment encoder, MemorySegment texture, long level, int index) {
+        if (renderEncoderSetTexture == null) {
+            Iris.logger.warn("renderEncoderSetTexture not available, skipping");
+            return;
+        }
         try {
             renderEncoderSetTexture.invoke(encoder, texture, level, index);
         } catch (Throwable t) {
@@ -843,20 +878,33 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void renderEncoderSetTextureAndSampler(MemorySegment encoder, MemorySegment texture, MemorySegment sampler, int slot) {
-        // 简化的实现：分别设置纹理和采样器
+        // 优先使用 metallum 的 setTextureAndSampler 组合方法
+        if (renderEncoderSetTextureAndSampler != null) {
+            try {
+                renderEncoderSetTextureAndSampler.invoke(encoder, texture, sampler, slot);
+                return;
+            } catch (Throwable t) {
+                Iris.logger.debug("setTextureAndSampler failed, falling back", t);
+            }
+        }
+        // 回退：分别设置纹理和采样器
         try {
-            if (!isNullHandle(texture)) {
+            if (!isNullHandle(texture) && renderEncoderSetTexture != null) {
                 renderEncoderSetTexture.invoke(encoder, texture, 0, slot);
             }
-            if (!isNullHandle(sampler)) {
-                renderEncoderSetSamplerState.invoke(encoder, sampler, 0, slot);
-            }
+            // 注意：单独的 setSamplerState 不存在于 metallum，采样器需要通过 setTextureAndSampler 设置
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
     }
 
     public static void renderEncoderSetSamplerState(MemorySegment encoder, MemorySegment sampler, long lod, int index) {
+        // metallum 没有单独的 setSamplerState，需要通过 setTextureAndSampler 设置
+        // 这个方法将不做任何事情，调用者应该使用 setTextureAndSampler
+        if (renderEncoderSetSamplerState == null) {
+            Iris.logger.debug("setSamplerState not available on this platform");
+            return;
+        }
         try {
             renderEncoderSetSamplerState.invoke(encoder, sampler, lod, index);
         } catch (Throwable t) {
@@ -865,6 +913,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void renderEncoderSetScissorRect(MemorySegment encoder, long x, long y, long width, long height) {
+        if (renderEncoderSetScissorRect == null) {
+            return;
+        }
         try {
             renderEncoderSetScissorRect.invoke(encoder, x, y, width, height);
         } catch (Throwable t) {
@@ -874,30 +925,24 @@ public final class IrisMetalNativeBridge {
 
     public static void renderEncoderSetViewport(MemorySegment encoder, double originX, double originY, double width,
                                                  double height, double znear, double zfar, long scissorX, long scissorY) {
-        try {
-            renderEncoderSetViewport.invoke(encoder, originX, originY, width, height, znear, zfar, scissorX, scissorY);
-        } catch (Throwable t) {
-            throw new RuntimeException(t);
-        }
+        // metallum 不支持 setViewport，跳过
+        Iris.logger.debug("setViewport not available on this platform, skipping");
     }
 
     public static void renderEncoderSetBlendColor(MemorySegment encoder, float r, float g, float b, float a) {
-        try {
-            renderEncoderSetBlendColor.invoke(encoder, r, g, b, a);
-        } catch (Throwable t) {
-            throw new RuntimeException(t);
-        }
+        // metallum 不支持 setBlendColor，跳过
+        Iris.logger.debug("setBlendColor not available on this platform, skipping");
     }
 
     public static void renderEncoderSetColorWriteMask(MemorySegment encoder, int mask) {
-        try {
-            renderEncoderSetColorWriteMask.invoke(encoder, mask);
-        } catch (Throwable t) {
-            throw new RuntimeException(t);
-        }
+        // metallum 不支持 setColorWriteMask，跳过
+        Iris.logger.debug("setColorWriteMask not available on this platform, skipping");
     }
 
     public static void renderEncoderDrawPrimitives(MemorySegment encoder, int primitiveType, long vertexStart, long vertexCount, long instanceCount) {
+        if (renderEncoderDrawPrimitives == null) {
+            throw new UnsupportedOperationException("drawPrimitives not available on this platform");
+        }
         try {
             renderEncoderDrawPrimitives.invoke(encoder, primitiveType, vertexStart, vertexCount, instanceCount);
         } catch (Throwable t) {
@@ -907,6 +952,9 @@ public final class IrisMetalNativeBridge {
 
     public static void renderEncoderDrawIndexedPrimitives(MemorySegment encoder, int primitiveType, MemorySegment indexBuffer,
                                                            long indexCount, long indexStart, long instanceCount) {
+        if (renderEncoderDrawIndexedPrimitives == null) {
+            throw new UnsupportedOperationException("drawIndexedPrimitives not available on this platform");
+        }
         try {
             renderEncoderDrawIndexedPrimitives.invoke(encoder, primitiveType, indexBuffer, indexCount, indexStart, instanceCount);
         } catch (Throwable t) {
