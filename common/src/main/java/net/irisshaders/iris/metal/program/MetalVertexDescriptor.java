@@ -65,6 +65,26 @@ public final class MetalVertexDescriptor {
         return new MetalVertexDescriptor(attrs, 32);
     }
 
+    /**
+     * 创建用于地形渲染的顶点描述符。
+     * 对应 GL 的 NEW_ENTITY 顶点格式。
+     */
+    public static MetalVertexDescriptor createTerrain() {
+        return defaultMcFormat();
+    }
+
+    /**
+     * 创建用于全屏四边形渲染的顶点描述符。
+     * 简单的 2D 顶点，仅包含位置和纹理坐标。
+     */
+    public static MetalVertexDescriptor createFullscreenQuad() {
+        Attribute[] attrs = {
+                new Attribute(0, FORMAT_FLOAT3, 0, 0),    // position (x, y, z)
+                new Attribute(1, FORMAT_FLOAT2, 12, 0),   // texcoord (u, v)
+        };
+        return new MetalVertexDescriptor(attrs, 20);
+    }
+
     public Attribute[] attributes() {
         return attributes;
     }
