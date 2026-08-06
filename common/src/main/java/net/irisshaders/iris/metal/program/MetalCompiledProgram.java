@@ -154,9 +154,17 @@ public final class MetalCompiledProgram implements AutoCloseable {
 
         // 3. 创建 pipeline descriptor 并设置参数
         MemorySegment pipelineDescriptor = IrisMetalNativeBridge.createRenderPipelineDescriptor();
+        
+        if (IrisMetalNativeBridge.isNullHandle(pipelineDescriptor)) {
+            if (!IrisMetalNativeBridge.isNullHandle(vertexLibrary)) IrisMetalNativeBridge.releaseObject(vertexLibrary);
+            if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
+            if (!IrisMetalNativeBridge.isNullHandle(fragmentLibrary)) IrisMetalNativeBridge.releaseObject(fragmentLibrary);
+            if (!IrisMetalNativeBridge.isNullHandle(fragmentFunction)) IrisMetalNativeBridge.releaseObject(fragmentFunction);
+            throw new RuntimeException("Failed to create render pipeline descriptor: " + name);
+        }
 
-        IrisMetalNativeBridge.setPipelineVertexFunction(pipelineDescriptor, vertexFunction);
-        IrisMetalNativeBridge.setPipelineFragmentFunction(pipelineDescriptor, fragmentFunction);
+        // 设置 vertex 和 fragment functions（一起设置，因为 metallum 的 setCompiledFunctions 需要两个参数）
+        IrisMetalNativeBridge.setPipelineVertexFunction(pipelineDescriptor, vertexFunction, fragmentFunction);
 
         // 设置颜色附件格式和 blend state
         for (int i = 0; i < colorFormats.length; i++) {

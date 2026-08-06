@@ -116,6 +116,13 @@ public final class IrisMetalNativeBridge {
     // ===== Render Pipeline (编译后的 MTLRenderPipelineState) =====
     private static MethodHandle compileRenderPipeline;
     private static MethodHandle compileComputePipeline;
+    private static MethodHandle renderPipelineDescriptorCreate;
+    private static MethodHandle renderPipelineDescriptorSetCompiledFunctions;
+    private static MethodHandle renderPipelineDescriptorSetVertexDescriptor;
+    private static MethodHandle renderPipelineDescriptorSetAttachmentFormats;
+    private static MethodHandle renderPipelineDescriptorSetColorAttachmentFormat;
+    private static MethodHandle renderPipelineDescriptorSetDepthStencilFormats;
+    private static MethodHandle renderPipelineDescriptorSetColorAttachmentBlendState;
     private static MethodHandle renderEncoderSetRenderPipelineState;
     private static MethodHandle renderEncoderSetDepthStencilState;
     private static MethodHandle renderEncoderSetDepthBias;
@@ -290,9 +297,25 @@ public final class IrisMetalNativeBridge {
 
         // Render Pipeline (可选，因为可能使用预编译的 pipeline)
         compileRenderPipeline = optionalDowncall(lookup, "metallum_MTLDevice_makeRenderPipelineState",
-                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS));
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         compileComputePipeline = optionalDowncall(lookup, "metallum_MTLDevice_makeComputePipelineState",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+        
+        // Render Pipeline Descriptor
+        renderPipelineDescriptorCreate = optionalDowncall(lookup, "metallum_MTLRenderPipelineDescriptor_create",
+                FunctionDescriptor.of(ValueLayout.ADDRESS));
+        renderPipelineDescriptorSetCompiledFunctions = optionalDowncall(lookup, "metallum_MTLRenderPipelineDescriptor_setCompiledFunctions",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+        renderPipelineDescriptorSetVertexDescriptor = optionalDowncall(lookup, "metallum_MTLRenderPipelineDescriptor_setVertexDescriptor",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+        renderPipelineDescriptorSetAttachmentFormats = optionalDowncall(lookup, "metallum_MTLRenderPipelineDescriptor_setAttachmentFormats",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, INT, INT));
+        renderPipelineDescriptorSetColorAttachmentFormat = optionalDowncall(lookup, "metallum_MTLRenderPipelineDescriptor_setColorAttachmentFormat",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, INT));
+        renderPipelineDescriptorSetDepthStencilFormats = optionalDowncall(lookup, "metallum_MTLRenderPipelineDescriptor_setDepthStencilFormats",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, INT));
+        renderPipelineDescriptorSetColorAttachmentBlendState = optionalDowncall(lookup, "metallum_MTLRenderPipelineDescriptor_setColorAttachmentBlendState",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, INT, INT, INT, INT, INT, INT, INT, INT));
 
         // Render Encoder (使用 optionalDowncall 以兼容不同的 metallum 版本)
         renderEncoderSetRenderPipelineState = optionalDowncall(lookup, "metallum_MTLRenderCommandEncoder_setRenderPipelineState",
@@ -1487,36 +1510,83 @@ public final class IrisMetalNativeBridge {
     }
 
     public static MemorySegment createRenderPipelineDescriptor() {
-        // 简化实现
-        return MemorySegment.NULL;
+        if (renderPipelineDescriptorCreate == null) {
+            return MemorySegment.NULL;
+        }
+        try {
+            return (MemorySegment) renderPipelineDescriptorCreate.invoke();
+        } catch (Throwable t) {
+            throw new RuntimeException("Failed to create render pipeline descriptor", t);
+        }
     }
 
-    public static void setPipelineVertexFunction(MemorySegment descriptor, MemorySegment function) {
-        // 简化实现
+    public static void setPipelineVertexFunction(MemorySegment descriptor, MemorySegment vertexFunction, MemorySegment fragmentFunction) {
+        if (renderPipelineDescriptorSetCompiledFunctions == null || isNullHandle(descriptor)) {
+            return;
+        }
+        try {
+            // setCompiledFunctions sets both vertex and fragment functions
+            renderPipelineDescriptorSetCompiledFunctions.invoke(descriptor, vertexFunction, fragmentFunction);
+        } catch (Throwable t) {
+            Iris.logger.warn("Failed to set pipeline functions", t);
+        }
     }
 
     public static void setPipelineFragmentFunction(MemorySegment descriptor, MemorySegment function) {
-        // 简化实现
+        // Handled by setPipelineVertexFunction which sets both
     }
 
     public static void setPipelineColorAttachment(MemorySegment descriptor, int index, int pixelFormat,
                                                  int blendEnabled,
                                                  int srcBlend, int dstBlend, int blendOp,
                                                  int srcBlendAlpha, int dstBlendAlpha, int blendOpAlpha) {
-        // 简化实现
+        if (renderPipelineDescriptorSetColorAttachmentFormat == null || isNullHandle(descriptor)) {
+            return;
+        }
+        try {
+            renderPipelineDescriptorSetColorAttachmentFormat.invoke(descriptor, index, pixelFormat);
+            if (blendEnabled != 0 && renderPipelineDescriptorSetColorAttachmentBlendState != null) {
+                // writeMask: 0xF = all color components
+                renderPipelineDescriptorSetColorAttachmentBlendState.invoke(descriptor, index, 1,
+                        srcBlend, dstBlend, blendOp, srcBlendAlpha, dstBlendAlpha, blendOpAlpha, 0xF);
+            }
+        } catch (Throwable t) {
+            Iris.logger.warn("Failed to set color attachment", t);
+        }
     }
 
     public static void setPipelineDepthAttachmentPixelFormat(MemorySegment descriptor, int pixelFormat) {
-        // 简化实现
+        if (renderPipelineDescriptorSetDepthStencilFormats == null || isNullHandle(descriptor)) {
+            return;
+        }
+        try {
+            // depthFormat = pixelFormat, stencilFormat = 0 (no stencil)
+            renderPipelineDescriptorSetDepthStencilFormats.invoke(descriptor, pixelFormat, 0);
+        } catch (Throwable t) {
+            Iris.logger.warn("Failed to set depth attachment format", t);
+        }
     }
 
     public static void setPipelineVertexDescriptor(MemorySegment descriptor, MemorySegment vertexDescriptor) {
-        // 简化实现
+        if (renderPipelineDescriptorSetVertexDescriptor == null || isNullHandle(descriptor) || isNullHandle(vertexDescriptor)) {
+            return;
+        }
+        try {
+            renderPipelineDescriptorSetVertexDescriptor.invoke(descriptor, vertexDescriptor);
+        } catch (Throwable t) {
+            Iris.logger.warn("Failed to set vertex descriptor", t);
+        }
     }
 
     public static MemorySegment newRenderPipelineState(MemorySegment device, MemorySegment descriptor) {
-        // 简化实现
-        return MemorySegment.NULL;
+        if (compileRenderPipeline == null || isNullHandle(device) || isNullHandle(descriptor)) {
+            return MemorySegment.NULL;
+        }
+        try {
+            return (MemorySegment) compileRenderPipeline.invoke(device, descriptor);
+        } catch (Throwable t) {
+            throw new RuntimeException("Failed to create render pipeline state", t);
+        }
     }
 
     public static void uploadBufferData(MemorySegment buffer, ByteBuffer data, long size) {
