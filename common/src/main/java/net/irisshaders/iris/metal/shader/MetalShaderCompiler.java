@@ -229,69 +229,60 @@ public final class MetalShaderCompiler {
             result.contains("uniform mat3 iris_NormalMat;") ||
             result.contains("uniform mat4 iris_LightmapTextureMatrix;")) {
             
-            // 找到 uniform 声明的位置
-            StringBuilder newShader = new StringBuilder();
-            String[] lines = result.split("\n");
-            boolean inUniformBlock = false;
-            boolean addedVertexTransformsBlock = false;
+            // 收集需要移动的 uniform
             List<String> vertexUniforms = new ArrayList<>();
             
+            // 提取 uniform 行并构建过滤后的 shader
+            String[] lines = result.split("\n");
+            List<String> filteredLines = new ArrayList<>();
+            
             for (String line : lines) {
-                // 收集需要移动的 uniform
                 if (line.contains("uniform mat4 iris_ModelViewMatInverse;") ||
                     line.contains("uniform mat4 iris_ProjMatInverse;") ||
                     line.contains("uniform mat3 iris_NormalMat;") ||
                     line.contains("uniform mat4 iris_LightmapTextureMatrix;")) {
-                    // 提取 uniform 类型和名称
                     String uniformLine = line.trim().replace("uniform ", "").replace(";", "");
                     vertexUniforms.add(uniformLine);
                     Iris.logger.info("[Iris-Metal] Moving uniform to block: {}", line.trim());
-                    continue; // 跳过这一行，稍后添加到 block
+                    // 跳过这一行
+                    continue;
+                }
+                filteredLines.add(line);
+            }
+            
+            if (!vertexUniforms.isEmpty()) {
+                // 构建新的 uniform block
+                StringBuilder vertexBlock = new StringBuilder();
+                vertexBlock.append("\nlayout(std140) uniform iris_VertexTransforms {\n");
+                for (String uniform : vertexUniforms) {
+                    vertexBlock.append("    ").append(uniform).append(";\n");
+                }
+                vertexBlock.append("} iris_VertexTransforms;\n\n");
+                
+                // 构建新 shader：在第一个 layout(std140) uniform 之前插入 block
+                StringBuilder newShader = new StringBuilder();
+                boolean insertedBlock = false;
+                
+                for (String line : filteredLines) {
+                    // 如果还没插入 block，找到合适的位置
+                    if (!insertedBlock && line.contains("layout(std140) uniform")) {
+                        newShader.append(vertexBlock.toString());
+                        insertedBlock = true;
+                    }
+                    newShader.append(line).append("\n");
                 }
                 
-                // 找到现有的 uniform block 开始
-                if (line.contains("layout(std140) uniform iris_DynamicTransforms")) {
-                    inUniformBlock = true;
-                }
-                
-                // 找到 uniform block 结束 - 需要在 } 后添加 block 名称
-                if (inUniformBlock && line.contains("} iris_transforms;")) {
-                    inUniformBlock = false;
-                    
-                    // 如果还没有添加 VertexTransforms block，且收集到了 uniform
-                    if (!addedVertexTransformsBlock && !vertexUniforms.isEmpty()) {
-                        newShader.append("layout(std140) uniform iris_VertexTransforms {\n");
-                        for (String uniform : vertexUniforms) {
-                            newShader.append("    ").append(uniform).append(";\n");
-                        }
-                        newShader.append("} iris_VertexTransforms;\n\n");  // 注意：需要在 } 后添加 block 名称
-                        addedVertexTransformsBlock = true;
+                // 如果没有找到 layout(std140) uniform，在开头插入
+                if (!insertedBlock) {
+                    newShader = new StringBuilder(vertexBlock.toString());
+                    for (String line : filteredLines) {
+                        newShader.append(line).append("\n");
                     }
                 }
                 
-                newShader.append(line).append("\n");
+                result = newShader.toString();
             }
             
-            // 如果 shader 没有 uniform block 但有 vertex uniforms
-            if (!addedVertexTransformsBlock && !vertexUniforms.isEmpty()) {
-                // 在 #version 之后插入 block
-                String versionLine = "";
-                String rest = newShader.toString();
-                int versionEnd = rest.indexOf("\n");
-                if (versionEnd > 0) {
-                    versionLine = rest.substring(0, versionEnd + 1);
-                    rest = rest.substring(versionEnd + 1);
-                    newShader = new StringBuilder(versionLine);
-                    newShader.append("layout(std140) uniform iris_VertexTransforms {\n");
-                    for (String uniform : vertexUniforms) {
-                        newShader.append("    ").append(uniform).append(";\n");
-                    }
-                    newShader.append("} iris_VertexTransforms;\n\n");  // 注意：需要在 } 后添加 block 名称
-                    newShader.append(rest);
-                }
-            }
-            
-            result = newShader.toString();
             // 打印转换后的完整 shader
             String shaderPreview = result.substring(0, Math.min(2000, result.length())).replace("\n", "\\n");
             Iris.logger.info("[Iris-Metal] Adapted shader (first 2000 chars): {}", shaderPreview);
