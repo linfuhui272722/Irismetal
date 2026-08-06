@@ -279,10 +279,10 @@ public final class IrisMetalNativeBridge {
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
 
         // 纹理
-        // Note: metallum_create_texture_2d 不需要 device 参数，它内部自己获取系统默认设备
-        // 参数顺序: pixelFormat, width, height, depthOrLayers, mipLevels, cubeCompatible, usage, storageMode, label
+        // metallum_create_texture_2d 需要 device 参数
+        // 参数顺序: device, pixelFormat, width, height, depthOrLayers, mipLevels, cubeCompatible, usage, storageMode, label
         createTexture2D = downcall(lookup, "metallum_create_texture_2d",
-                FunctionDescriptor.of(ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
         // Note: metallum_create_texture 需要 device 参数，用于创建 3D 和 cube 纹理
         // 参数顺序: device, pixelFormat, width, height, depthOrLayers, mipLevels, dimension, cubeCompatible, usage, storageMode, label
         createTexture3D = optionalDowncall(lookup, "metallum_create_texture",
@@ -669,13 +669,14 @@ public final class IrisMetalNativeBridge {
     }
 
     // ===== 纹理 =====
-    // Note: metallum_create_texture_2d 内部自己获取系统默认设备，不需要传入 device
+    // metallum_create_texture_2d 需要 device 参数
     public static MemorySegment createTexture2D(int pixelFormat, long width, long height,
                                                  long depthOrLayers, long mipLevels, long cubeCompatible,
                                                  int usage, int storageMode, String label) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment labelSeg = allocateUtf8String( label);
-            MemorySegment result = (MemorySegment) createTexture2D.invoke(pixelFormat, width, height, depthOrLayers, mipLevels, cubeCompatible, usage, storageMode, labelSeg);
+            MemorySegment device = getSystemDefaultDevice();
+            MemorySegment labelSeg = allocateUtf8String(label);
+            MemorySegment result = (MemorySegment) createTexture2D.invoke(device, pixelFormat, width, height, depthOrLayers, mipLevels, cubeCompatible, usage, storageMode, labelSeg);
             if (isNullHandle(result)) {
                 Iris.logger.warn("createTexture2D returned NULL for {} (format={}, {}x{}, mipLevels={})", 
                     label, pixelFormat, width, height, mipLevels);
