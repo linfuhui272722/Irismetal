@@ -89,6 +89,9 @@ public final class MetalShaderCompiler {
             return CompileResult.failure("Empty shader source for " + name);
         }
         
+        // 打印完整 shader 内容用于调试
+        Iris.logger.info("[Iris-Metal] Full shader content for {}:\n{}", name, glslSource);
+        
         // 步骤 1：GLSL → SPIR-V
         // 使用 MC 26.2 的 GlslCompiler（vanilla Vulkan 后端也用这个）
         // 它会处理 GLSL 版本声明、宏定义等
@@ -251,7 +254,7 @@ public final class MetalShaderCompiler {
                     inUniformBlock = true;
                 }
                 
-                // 找到 uniform block 结束
+                // 找到 uniform block 结束 - 需要在 } 后添加 block 名称
                 if (inUniformBlock && line.contains("} iris_transforms;")) {
                     inUniformBlock = false;
                     
@@ -259,9 +262,9 @@ public final class MetalShaderCompiler {
                     if (!addedVertexTransformsBlock && !vertexUniforms.isEmpty()) {
                         newShader.append("layout(std140) uniform iris_VertexTransforms {\n");
                         for (String uniform : vertexUniforms) {
-                            newShader.append(uniform).append(";\n");
+                            newShader.append("    ").append(uniform).append(";\n");
                         }
-                        newShader.append("};\n\n");
+                        newShader.append("} iris_VertexTransforms;\n\n");  // 注意：需要在 } 后添加 block 名称
                         addedVertexTransformsBlock = true;
                     }
                 }
@@ -281,14 +284,17 @@ public final class MetalShaderCompiler {
                     newShader = new StringBuilder(versionLine);
                     newShader.append("layout(std140) uniform iris_VertexTransforms {\n");
                     for (String uniform : vertexUniforms) {
-                        newShader.append(uniform).append(";\n");
+                        newShader.append("    ").append(uniform).append(";\n");
                     }
-                    newShader.append("};\n\n");
+                    newShader.append("} iris_VertexTransforms;\n\n");  // 注意：需要在 } 后添加 block 名称
                     newShader.append(rest);
                 }
             }
             
             result = newShader.toString();
+            // 打印转换后的完整 shader
+            String shaderPreview = result.substring(0, Math.min(2000, result.length())).replace("\n", "\\n");
+            Iris.logger.info("[Iris-Metal] Adapted shader (first 2000 chars): {}", shaderPreview);
         }
 
         // gl_FragColor → 显式 output（如果 transformer 未处理）
