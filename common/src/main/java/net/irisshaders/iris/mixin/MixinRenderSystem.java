@@ -8,7 +8,6 @@ import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import net.irisshaders.iris.Iris;
-import net.irisshaders.iris.gl.GLDebug;
 import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.pbr.TextureTracker;
 import net.irisshaders.iris.samplers.IrisSamplers;
@@ -25,9 +24,18 @@ public class MixinRenderSystem {
 	@Inject(method = "initRenderer", at = @At("RETURN"), remap = false)
 	private static void iris$onRendererInit(GpuDevice device, CallbackInfo ci) {
 		Iris.duringRenderSystemInit();
-		GLDebug.reloadDebugState();
-		IrisRenderSystem.initRenderer();
-		IrisSamplers.initRenderer();
+
+		// 在 Metal 后端模式下，跳过 OpenGL 初始化
+		if (!IrisRenderSystem.isUsingMetalBackend()) {
+			try {
+				net.irisshaders.iris.gl.GLDebug.reloadDebugState();
+			} catch (Throwable e) {
+				// Metal 模式下忽略 GL 错误
+			}
+			IrisRenderSystem.initRenderer();
+			IrisSamplers.initRenderer();
+		}
+
 		Iris.onRenderSystemInit();
 	}
 }
