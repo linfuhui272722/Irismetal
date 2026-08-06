@@ -2,7 +2,6 @@ package net.irisshaders.iris.gl.sampler;
 
 import com.mojang.blaze3d.opengl.GlStateManager;
 import net.irisshaders.iris.gl.IrisRenderSystem;
-import net.irisshaders.iris.mixin.IrisMixinPlugin;
 import org.lwjgl.opengl.GL20C;
 import org.lwjgl.opengl.GL45C;
 
@@ -14,7 +13,8 @@ public class SamplerLimits {
 
         private SamplerLimits() {
                 // Metal 模式下使用默认值，因为此时没有 GL 上下文
-                if (IrisMixinPlugin.usingMetal) {
+                // 使用 IrisRenderSystem 的安全检查方法
+                if (IrisRenderSystem.isUsingMetalBackend()) {
                         this.maxTextureUnits = 16;  // Metal 最低要求
                         this.maxDrawBuffers = 8;
                         this.maxShaderStorageUnits = 0;  // Metal SSBO 需要额外支持

@@ -42,6 +42,33 @@ import java.nio.IntBuffer;
  * This class is responsible for abstracting calls to OpenGL and asserting that calls are run on the render thread.
  */
 public class IrisRenderSystem {
+        private static volatile boolean metalModeChecked = false;
+        private static volatile boolean isUsingMetal = false;
+
+        /**
+         * 安全地检查是否使用 Metal 后端。
+         * 这个方法可以安全地在任何时候调用，包括 static 初始化期间。
+         * Public 以便其他包的类（如 SamplerLimits）可以访问。
+         */
+        public static boolean isUsingMetalBackend() {
+                if (metalModeChecked) {
+                        return isUsingMetal;
+                }
+                try {
+                        // 尝试强制加载 IrisMixinPlugin 类并检查 usingMetal 字段
+                        Class<?> mixinPluginClass = Class.forName("net.irisshaders.iris.mixin.IrisMixinPlugin");
+                        java.lang.reflect.Field usingMetalField = mixinPluginClass.getDeclaredField("usingMetal");
+                        usingMetalField.setAccessible(true);
+                        isUsingMetal = usingMetalField.getBoolean(null);
+                        metalModeChecked = true;
+                } catch (Throwable e) {
+                        // 如果无法检查，默认假设不使用 Metal
+                        isUsingMetal = false;
+                        metalModeChecked = true;
+                }
+                return isUsingMetal;
+        }
+
         private static final int[] emptyArray = new int[SamplerLimits.get().getMaxTextureUnits()];
         private static GpuBufferSlice backupProjection;
         private static ProjectionMatrixBuffer perspectiveProjectionMatrixBuffer;
@@ -59,7 +86,7 @@ public class IrisRenderSystem {
                 // Metal 模式：metallum 已将后端切换为 Metal，此时无 GL 上下文，
                 // 不能调用 GL.getCapabilities()，否则会崩溃。
                 // 改为初始化 Iris Metal 后端设备。
-                if (net.irisshaders.iris.mixin.IrisMixinPlugin.usingMetal) {
+                if (isUsingMetalBackend()) {
                         try {
                                 net.irisshaders.iris.metal.IrisMetalDevice metalDevice = net.irisshaders.iris.metal.IrisMetalDevice.get();
                                 Iris.logger.info("Metal backend detected (metallum), Iris Metal device initialized: {}", metalDevice.deviceName());
@@ -310,10 +337,18 @@ public class IrisRenderSystem {
         }
 
         public static boolean supportsSSBO() {
+                // Metal 模式下不支持 SSBO
+                if (isUsingMetalBackend()) {
+                        return false;
+                }
                 return GL.getCapabilities().OpenGL44 || (GL.getCapabilities().GL_ARB_shader_storage_buffer_object && GL.getCapabilities().GL_ARB_buffer_storage);
         }
 
         public static boolean supportsImageLoadStore() {
+                // Metal 模式下不支持 Image Load Store
+                if (isUsingMetalBackend()) {
+                        return false;
+                }
                 return GL.getCapabilities().glBindImageTexture != 0L || GL.getCapabilities().OpenGL42 || ((GL.getCapabilities().GL_ARB_shader_image_load_store || GL.getCapabilities().GL_EXT_shader_image_load_store) && GL.getCapabilities().GL_ARB_buffer_storage);
         }
 
