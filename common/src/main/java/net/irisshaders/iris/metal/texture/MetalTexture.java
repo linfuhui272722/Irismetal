@@ -84,10 +84,18 @@ public final class MetalTexture implements AutoCloseable {
                         width, height, 1, mipLevels, 1, usage, storageMode, label);
                 break;
             case TEXTURE_3D:
+                if (!IrisMetalNativeBridge.isTexture3DAvailable()) {
+                    throw new UnsupportedOperationException(
+                        "3D textures are not supported on this platform. Shader pack requires 3D texture support.");
+                }
                 this.handle = IrisMetalNativeBridge.createTexture3D(device, mtlPixelFormat,
                         width, height, depth, mipLevels, usage, storageMode, label);
                 break;
             case TEXTURE_CUBE:
+                if (!IrisMetalNativeBridge.isTextureCubeAvailable()) {
+                    throw new UnsupportedOperationException(
+                        "Cube textures are not supported on this platform. Shader pack requires cube texture support.");
+                }
                 this.handle = IrisMetalNativeBridge.createTextureCube(device, mtlPixelFormat,
                         Math.max(width, height), mipLevels, usage, storageMode, label);
                 break;

@@ -272,9 +272,9 @@ public final class IrisMetalNativeBridge {
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
         createTextureCube = optionalDowncall(lookup, "metallum_create_texture_cube",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
-        textureReplaceRegion = downcall(lookup, "metallum_texture_replace_region",
+        textureReplaceRegion = optionalDowncall(lookup, "metallum_texture_replace_region",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, INT, LONG));
-        textureGetBytes = downcall(lookup, "metallum_texture_get_bytes",
+        textureGetBytes = optionalDowncall(lookup, "metallum_texture_get_bytes",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, INT, LONG));
         releaseObject = downcall(lookup, "metallum_release_object",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
@@ -284,11 +284,11 @@ public final class IrisMetalNativeBridge {
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
         bufferContents = downcall(lookup, "metallum_get_buffer_contents",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        bufferReplaceRegion = downcall(lookup, "metallum_buffer_replace_region",
+        bufferReplaceRegion = optionalDowncall(lookup, "metallum_buffer_replace_region",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG));
 
-        // Render Pipeline
-        compileRenderPipeline = downcall(lookup, "metallum_compile_render_pipeline",
+        // Render Pipeline (可选，因为可能使用预编译的 pipeline)
+        compileRenderPipeline = optionalDowncall(lookup, "metallum_compile_render_pipeline",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS));
         compileComputePipeline = optionalDowncall(lookup, "metallum_compile_compute_pipeline",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -358,17 +358,17 @@ public final class IrisMetalNativeBridge {
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG));
         blitCopyTextureToBuffer = downcall(lookup, "metallum_blitEncoder_copyTextureToBuffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG));
-        blitGenerateMipmaps = downcall(lookup, "metallum_blitEncoder_generateMipmaps",
+        blitGenerateMipmaps = optionalDowncall(lookup, "metallum_blitEncoder_generateMipmaps",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
-        // SPIRV-Cross shader 编译
-        compileGlslToMsl = downcall(lookup, "metallum_compile_glsl_to_msl",
+        // SPIRV-Cross shader 编译 (可选，因为 shader 可能在构建时预编译)
+        compileGlslToMsl = optionalDowncall(lookup, "metallum_compile_glsl_to_msl",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        getCompiledMslSource = downcall(lookup, "metallum_get_compiled_msl_source",
+        getCompiledMslSource = optionalDowncall(lookup, "metallum_get_compiled_msl_source",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        getCompiledMslError = downcall(lookup, "metallum_get_compiled_msl_error",
+        getCompiledMslError = optionalDowncall(lookup, "metallum_get_compiled_msl_error",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        freeCompiledShader = downcall(lookup, "metallum_free_compiled_shader",
+        freeCompiledShader = optionalDowncall(lookup, "metallum_free_compiled_shader",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
     }
 
@@ -415,6 +415,30 @@ public final class IrisMetalNativeBridge {
 
     public static boolean isComputePipelineAvailable() {
         return compileComputePipeline != null;
+    }
+
+    public static boolean isTextureReplaceRegionAvailable() {
+        return textureReplaceRegion != null;
+    }
+
+    public static boolean isTextureGetBytesAvailable() {
+        return textureGetBytes != null;
+    }
+
+    public static boolean isBlitGenerateMipmapsAvailable() {
+        return blitGenerateMipmaps != null;
+    }
+
+    public static boolean isShaderCompilerAvailable() {
+        return compileGlslToMsl != null && getCompiledMslSource != null && getCompiledMslError != null && freeCompiledShader != null;
+    }
+
+    public static boolean isBufferReplaceRegionAvailable() {
+        return bufferReplaceRegion != null;
+    }
+
+    public static boolean isRenderPipelineCompilationAvailable() {
+        return compileRenderPipeline != null;
     }
 
     // 辅助方法：分配UTF-8字符串到内存段 (Java 22+兼容)
@@ -630,6 +654,9 @@ public final class IrisMetalNativeBridge {
     public static void textureReplaceRegion(MemorySegment texture, MemorySegment data, long dataLength,
                                              long slice, long level, long originX, long originY, long originZ,
                                              long width, long height, long depth, int bytesPerRow, long bytesPerImage) {
+        if (textureReplaceRegion == null) {
+            throw new UnsupportedOperationException("textureReplaceRegion is not available on this platform");
+        }
         try {
             textureReplaceRegion.invoke(texture, data, dataLength, slice, level, originX, originY, originZ, width, height, depth, bytesPerRow, bytesPerImage);
         } catch (Throwable t) {
@@ -640,6 +667,9 @@ public final class IrisMetalNativeBridge {
     public static void textureGetBytes(MemorySegment texture, MemorySegment out, long outLength,
                                         long slice, long level, long originX, long originY, long originZ,
                                         long width, long height, long depth, int bytesPerRow, long bytesPerImage) {
+        if (textureGetBytes == null) {
+            throw new UnsupportedOperationException("textureGetBytes is not available on this platform");
+        }
         try {
             textureGetBytes.invoke(texture, out, outLength, slice, level, originX, originY, originZ, width, height, depth, bytesPerRow, bytesPerImage);
         } catch (Throwable t) {
@@ -674,6 +704,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void bufferReplaceRegion(MemorySegment buffer, MemorySegment data, long offset, long length) {
+        if (bufferReplaceRegion == null) {
+            throw new UnsupportedOperationException("bufferReplaceRegion is not available on this platform");
+        }
         try {
             bufferReplaceRegion.invoke(buffer, data, offset, length);
         } catch (Throwable t) {
@@ -695,6 +728,9 @@ public final class IrisMetalNativeBridge {
      */
     public static MemorySegment compileRenderPipeline(MemorySegment device, String vertexMslSource, String fragmentMslSource,
                                                        String vertexFunctionName, String fragmentFunctionName, String label) {
+        if (compileRenderPipeline == null) {
+            throw new UnsupportedOperationException("Render pipeline compilation is not available on this platform");
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment vSrc = allocateUtf8String(arena, vertexMslSource);
             MemorySegment fSrc = allocateUtf8String(arena, fragmentMslSource);
@@ -707,6 +743,8 @@ public final class IrisMetalNativeBridge {
             names.setAtIndex(ValueLayout.ADDRESS, 1, fName);
             names.setAtIndex(ValueLayout.ADDRESS, 2, labelSeg);
             return (MemorySegment) compileRenderPipeline.invoke(device, vSrc, fSrc, names, 0L, MemorySegment.NULL);
+        } catch (UnsupportedOperationException e) {
+            throw e;
         } catch (Throwable t) {
             throw new RuntimeException("Failed to compile render pipeline: " + t.getMessage(), t);
         }
@@ -1054,6 +1092,10 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void blitGenerateMipmaps(MemorySegment encoder, MemorySegment texture) {
+        if (blitGenerateMipmaps == null) {
+            Iris.logger.warn("blitGenerateMipmaps is not available on this platform, skipping mipmap generation");
+            return;
+        }
         try {
             blitGenerateMipmaps.invoke(encoder, texture);
         } catch (Throwable t) {
@@ -1088,6 +1130,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static MemorySegment compileGlslToMsl(String glslSource, int stage, String entryPoint) {
+        if (compileGlslToMsl == null) {
+            throw new UnsupportedOperationException("GLSL to MSL compiler is not available on this platform");
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment src = allocateUtf8String(arena, glslSource);
             MemorySegment entry = allocateUtf8String(arena, entryPoint);
@@ -1099,12 +1144,17 @@ public final class IrisMetalNativeBridge {
                 throw new RuntimeException("GLSL→MSL compilation failed: " + error);
             }
             return result;
+        } catch (UnsupportedOperationException e) {
+            throw e;
         } catch (Throwable t) {
             throw new RuntimeException("GLSL→MSL compilation failed", t);
         }
     }
 
     public static String getCompiledMslSource(MemorySegment compiledHandle) {
+        if (getCompiledMslSource == null) {
+            throw new UnsupportedOperationException("GLSL to MSL compiler is not available on this platform");
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment srcSeg = (MemorySegment) getCompiledMslSource.invoke(compiledHandle);
             if (isNullHandle(srcSeg)) {
@@ -1119,6 +1169,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static String getCompiledMslError(MemorySegment compiledHandle) {
+        if (getCompiledMslError == null) {
+            return null;
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment errSeg = (MemorySegment) getCompiledMslError.invoke(compiledHandle);
             if (isNullHandle(errSeg)) {
@@ -1131,6 +1184,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void freeCompiledShader(MemorySegment compiledHandle) {
+        if (freeCompiledShader == null) {
+            return;
+        }
         try {
             freeCompiledShader.invoke(compiledHandle);
         } catch (Throwable t) {
