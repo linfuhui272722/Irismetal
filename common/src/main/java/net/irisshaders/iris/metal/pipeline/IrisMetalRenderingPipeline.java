@@ -4,6 +4,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import net.fabricmc.api.EnvType;
@@ -23,11 +25,15 @@ import net.irisshaders.iris.metal.program.MetalVertexDescriptor;
 import net.irisshaders.iris.metal.texture.MetalPixelFormat;
 import net.irisshaders.iris.metal.texture.MetalTexture;
 import net.irisshaders.iris.mixin.LevelRendererAccessor;
+import net.irisshaders.iris.gl.blending.AlphaTest;
+import net.irisshaders.iris.gl.state.ShaderAttributeInputs;
 import net.irisshaders.iris.pipeline.ShaderRenderingPipeline;
 import net.irisshaders.iris.pipeline.WorldRenderingPhase;
 import net.irisshaders.iris.pipeline.WorldRenderingPipeline;
 import net.irisshaders.iris.pipeline.programs.ShaderKey;
 import net.irisshaders.iris.pipeline.programs.ShaderMap;
+import net.irisshaders.iris.pipeline.transform.TransformPatcher;
+import net.irisshaders.iris.pipeline.transform.PatchShaderType;
 import net.irisshaders.iris.shaderpack.loading.ProgramArrayId;
 import net.irisshaders.iris.shaderpack.loading.ProgramId;
 import net.irisshaders.iris.shaderpack.programs.ProgramSet;
@@ -315,11 +321,34 @@ public class IrisMetalRenderingPipeline implements WorldRenderingPipeline, Shade
                 }
                 int depthFormat = gbuffersDepthTexture != null ? gbuffersDepthTexture.mtlPixelFormat() : 0;
                 
+                // Transform shader sources using TransformPatcher
+                // This converts OpenGL GLSL to Vulkan-compatible GLSL
+                AlphaTest alpha = source.getDirectives().getAlphaTestOverride().orElse(AlphaTest.ALWAYS);
+                boolean isLines = programId == ProgramId.Line;
+                boolean isClouds = programId == ProgramId.Clouds;
+                ShaderAttributeInputs inputs = new ShaderAttributeInputs(DefaultVertexFormat.BLOCK, false, isLines, false, false, false);
+                
+                Object2ObjectMap<Tri<String, net.irisshaders.iris.gl.texture.TextureType, TextureStage>, String> textureMap = 
+                    programSet.getPackDirectives().getTextureMap();
+                
+                Map<PatchShaderType, String> transformed = TransformPatcher.patchVanilla(
+                    source.getName(),
+                    source.getVertexSource().orElse(""),
+                    source.getGeometrySource().orElse(null),
+                    source.getTessControlSource().orElse(null),
+                    source.getTessEvalSource().orElse(null),
+                    source.getFragmentSource().orElse(""),
+                    alpha, isLines, isClouds, true, inputs, textureMap
+                );
+                
+                String vertexSource = transformed.get(PatchShaderType.VERTEX);
+                String fragmentSource = transformed.get(PatchShaderType.FRAGMENT);
+                
                 MetalCompiledProgram program = MetalCompiledProgram.create(
                     source.getName(),
-                    source.getVertexSource().orElse(null),
-                    source.getFragmentSource().orElse(null),
-                    source.getGeometrySource().orElse(null),
+                    vertexSource,
+                    fragmentSource,
+                    transformed.get(PatchShaderType.GEOMETRY),
                     vertexDesc,
                     colorFormats,
                     depthFormat,
@@ -361,10 +390,26 @@ public class IrisMetalRenderingPipeline implements WorldRenderingPipeline, Shade
                         }
                     }
                     
+                    // Transform shader sources using TransformPatcher
+                    TextureStage stage = TextureStage.COMPOSITE_AND_FINAL;
+                    Object2ObjectMap<Tri<String, net.irisshaders.iris.gl.texture.TextureType, TextureStage>, String> textureMap = 
+                        programSet.getPackDirectives().getTextureMap();
+                    Map<PatchShaderType, String> transformed = TransformPatcher.patchComposite(
+                        passName,
+                        source.getVertexSource().orElse(""),
+                        null, // geometry
+                        source.getFragmentSource().orElse(""),
+                        stage,
+                        textureMap
+                    );
+                    
+                    String vertexSource = transformed.get(PatchShaderType.VERTEX);
+                    String fragmentSource = transformed.get(PatchShaderType.FRAGMENT);
+                    
                     MetalCompiledProgram program = MetalCompiledProgram.create(
                         passName,
-                        source.getVertexSource().orElse(null),
-                        source.getFragmentSource().orElse(null),
+                        vertexSource,
+                        fragmentSource,
                         null,
                         vertexDesc,
                         colorFormats,
