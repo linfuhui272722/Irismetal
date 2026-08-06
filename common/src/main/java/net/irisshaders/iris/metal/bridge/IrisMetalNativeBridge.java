@@ -347,24 +347,24 @@ public final class IrisMetalNativeBridge {
         computeEncoderDispatchThreadgroups = optionalDowncall(lookup, "metallum_MTLComputeCommandEncoder_dispatchThreadgroups",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, INT, INT, INT, INT, INT));
 
-        // DepthStencil
-        makeDepthStencilState = downcall(lookup, "metallum_MTLDevice_makeDepthStencilState",
+        // DepthStencil (可选)
+        makeDepthStencilState = optionalDowncall(lookup, "metallum_MTLDevice_makeDepthStencilState",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, INT, INT, INT, INT, INT, INT, INT, INT));
 
-        // Sampler
-        makeSamplerState = downcall(lookup, "metallum_MTLDevice_makeSamplerState",
-                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, INT, INT, INT, INT, INT, INT, FLOAT, FLOAT, FLOAT, FLOAT, INT, INT));
+        // Sampler (可选)
+        makeSamplerState = optionalDowncall(lookup, "metallum_create_sampler",
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, INT, INT, INT, INT, INT, DOUBLE));
 
-        // Blit
-        blitCopyBufferToBuffer = downcall(lookup, "metallum_blitEncoder_copyBufferToBuffer",
+        // Blit (可选)
+        blitCopyBufferToBuffer = optionalDowncall(lookup, "metallum_MTLBlitCommandEncoder_copyFromBufferToBuffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS, LONG, LONG));
-        blitCopyBufferToTexture = downcall(lookup, "metallum_blitEncoder_copyBufferToTexture",
+        blitCopyBufferToTexture = optionalDowncall(lookup, "metallum_MTLBlitCommandEncoder_copyFromBufferToTexture",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG));
-        blitCopyTextureToTexture = downcall(lookup, "metallum_blitEncoder_copyTextureToTexture",
+        blitCopyTextureToTexture = optionalDowncall(lookup, "metallum_MTLBlitCommandEncoder_copyFromTextureToTexture",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG));
-        blitCopyTextureToBuffer = downcall(lookup, "metallum_blitEncoder_copyTextureToBuffer",
+        blitCopyTextureToBuffer = optionalDowncall(lookup, "metallum_MTLBlitCommandEncoder_copyFromTextureToBuffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG));
-        blitGenerateMipmaps = optionalDowncall(lookup, "metallum_blitEncoder_generateMipmaps",
+        blitGenerateMipmaps = optionalDowncall(lookup, "metallum_MTLBlitCommandEncoder_generateMipmaps",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
         // SPIRV-Cross shader 编译 (可选，因为 shader 可能在构建时预编译)
@@ -1046,6 +1046,9 @@ public final class IrisMetalNativeBridge {
                                                        int frontStencilCompare, int frontStencilWriteMask, int frontStencilReadMask,
                                                        int frontStencilFailure, int frontStencilDepthFailure, int frontStencilPass,
                                                        int backStencilCompare) {
+        if (makeDepthStencilState == null) {
+            return MemorySegment.NULL;
+        }
         try {
             return (MemorySegment) makeDepthStencilState.invoke(device, depthCompare, depthWriteEnabled,
                     frontStencilCompare, frontStencilWriteMask, frontStencilReadMask,
@@ -1060,10 +1063,14 @@ public final class IrisMetalNativeBridge {
                                                   int sAddressMode, int tAddressMode, int rAddressMode,
                                                   int compareFunction, float lodMinClamp, float lodMaxClamp,
                                                   float maxAnisotropy, int normalizedCoords, int supportArgumentBuffers) {
+        if (makeSamplerState == null) {
+            return MemorySegment.NULL;
+        }
         try {
-            return (MemorySegment) makeSamplerState.invoke(device, minFilter, magFilter, mipFilter,
-                    sAddressMode, tAddressMode, rAddressMode, compareFunction,
-                    lodMinClamp, lodMaxClamp, maxAnisotropy, normalizedCoords, supportArgumentBuffers);
+            // metallum_create_sampler signature:
+            // (device, addressModeU, addressModeV, minFilter, magFilter, mipFilter, maxAnisotropy, lodMaxClamp)
+            return (MemorySegment) makeSamplerState.invoke(device, sAddressMode, tAddressMode,
+                    minFilter, magFilter, mipFilter, (int)maxAnisotropy, (double)lodMaxClamp);
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
@@ -1081,6 +1088,9 @@ public final class IrisMetalNativeBridge {
     // ===== Blit =====
     public static void blitCopyBufferToBuffer(MemorySegment encoder, MemorySegment src, long srcOffset,
                                                MemorySegment dst, long dstOffset, long size) {
+        if (blitCopyBufferToBuffer == null) {
+            throw new UnsupportedOperationException("blitCopyBufferToBuffer not available on this platform");
+        }
         try {
             blitCopyBufferToBuffer.invoke(encoder, src, srcOffset, dst, dstOffset, size);
         } catch (Throwable t) {
@@ -1092,6 +1102,9 @@ public final class IrisMetalNativeBridge {
                                                 MemorySegment dst, long dstSlice, long dstLevel, long dstOriginX,
                                                 long dstOriginY, long dstOriginZ, long width, long height, long depth,
                                                 long bytesPerRow, long bytesPerImage) {
+        if (blitCopyBufferToTexture == null) {
+            throw new UnsupportedOperationException("blitCopyBufferToTexture not available on this platform");
+        }
         try {
             blitCopyBufferToTexture.invoke(encoder, src, srcOffset, dst, dstSlice, dstLevel, dstOriginX, dstOriginY, dstOriginZ, width, height, depth, bytesPerRow, bytesPerImage);
         } catch (Throwable t) {
@@ -1113,6 +1126,9 @@ public final class IrisMetalNativeBridge {
     public static void blitCopyTextureToTexture(MemorySegment encoder, MemorySegment src, MemorySegment dst,
                                                  long srcSlice, long srcLevel, long srcOriginX, long srcOriginY, long srcOriginZ,
                                                  long dstSlice, long dstLevel, long size) {
+        if (blitCopyTextureToTexture == null) {
+            throw new UnsupportedOperationException("blitCopyTextureToTexture not available on this platform");
+        }
         try {
             blitCopyTextureToTexture.invoke(encoder, src, dst, srcSlice, srcLevel, srcOriginX, srcOriginY, srcOriginZ, dstSlice, dstLevel, size);
         } catch (Throwable t) {
@@ -1123,6 +1139,9 @@ public final class IrisMetalNativeBridge {
     public static void blitCopyTextureToBuffer(MemorySegment encoder, MemorySegment src, MemorySegment dst,
                                                 long srcSlice, long srcLevel, long srcOriginX, long srcOriginY, long srcOriginZ,
                                                 long width, long height, long depth, long bytesPerRow, long bytesPerImage) {
+        if (blitCopyTextureToBuffer == null) {
+            throw new UnsupportedOperationException("blitCopyTextureToBuffer not available on this platform");
+        }
         try {
             blitCopyTextureToBuffer.invoke(encoder, src, dst, srcSlice, srcLevel, srcOriginX, srcOriginY, srcOriginZ, width, height, depth, bytesPerRow, bytesPerImage);
         } catch (Throwable t) {
