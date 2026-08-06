@@ -288,57 +288,59 @@ public final class IrisMetalNativeBridge {
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG));
 
         // Render Pipeline (可选，因为可能使用预编译的 pipeline)
-        compileRenderPipeline = optionalDowncall(lookup, "metallum_compile_render_pipeline",
+        compileRenderPipeline = optionalDowncall(lookup, "metallum_MTLDevice_makeRenderPipelineState",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS));
-        compileComputePipeline = optionalDowncall(lookup, "metallum_compile_compute_pipeline",
+        compileComputePipeline = optionalDowncall(lookup, "metallum_MTLDevice_makeComputePipelineState",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        renderEncoderSetRenderPipelineState = downcall(lookup, "metallum_renderEncoder_setRenderPipelineState",
+
+        // Render Encoder
+        renderEncoderSetRenderPipelineState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setRenderPipelineState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        renderEncoderSetDepthStencilState = downcall(lookup, "metallum_renderEncoder_setDepthStencilState",
+        renderEncoderSetDepthStencilState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setDepthStencilState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        renderEncoderSetDepthBias = downcall(lookup, "metallum_renderEncoder_setDepthBias",
+        renderEncoderSetDepthBias = downcall(lookup, "metallum_MTLRenderCommandEncoder_setDepthBias",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, FLOAT, FLOAT, FLOAT));
-        renderEncoderSetFrontFacingWinding = downcall(lookup, "metallum_renderEncoder_setFrontFacingWinding",
+        renderEncoderSetFrontFacingWinding = downcall(lookup, "metallum_MTLRenderCommandEncoder_setFrontFacingWinding",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderSetCullMode = downcall(lookup, "metallum_renderEncoder_setCullMode",
+        renderEncoderSetCullMode = downcall(lookup, "metallum_MTLRenderCommandEncoder_setCullMode",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderSetTriangleFillMode = downcall(lookup, "metallum_renderEncoder_setTriangleFillMode",
+        renderEncoderSetTriangleFillMode = downcall(lookup, "metallum_MTLRenderCommandEncoder_setTriangleFillMode",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderSetBuffer = downcall(lookup, "metallum_renderEncoder_setBuffer",
+        renderEncoderSetBuffer = downcall(lookup, "metallum_MTLRenderCommandEncoder_setBuffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, INT));
-        renderEncoderSetBufferOffset = downcall(lookup, "metallum_renderEncoder_setBufferOffset",
+        renderEncoderSetBufferOffset = downcall(lookup, "metallum_MTLRenderCommandEncoder_setBufferOffset",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, INT));
-        renderEncoderSetTexture = downcall(lookup, "metallum_renderEncoder_setTexture",
+        renderEncoderSetTexture = downcall(lookup, "metallum_MTLRenderCommandEncoder_setTexture",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        renderEncoderSetSamplerState = downcall(lookup, "metallum_renderEncoder_setSamplerState",
+        renderEncoderSetSamplerState = downcall(lookup, "metallum_MTLRenderCommandEncoder_setSamplerState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        renderEncoderSetScissorRect = downcall(lookup, "metallum_renderEncoder_setScissorRect",
+        renderEncoderSetScissorRect = downcall(lookup, "metallum_MTLRenderCommandEncoder_setScissorRect",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
-        renderEncoderSetViewport = downcall(lookup, "metallum_renderEncoder_setViewport",
+        renderEncoderSetViewport = downcall(lookup, "metallum_MTLRenderCommandEncoder_setViewport",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, DOUBLE, DOUBLE, DOUBLE, DOUBLE, DOUBLE, DOUBLE, LONG, LONG));
-        renderEncoderSetBlendColor = downcall(lookup, "metallum_renderEncoder_setBlendColor",
+        renderEncoderSetBlendColor = downcall(lookup, "metallum_MTLRenderCommandEncoder_setBlendColor",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, FLOAT, FLOAT, FLOAT, FLOAT));
-        renderEncoderSetColorWriteMask = downcall(lookup, "metallum_renderEncoder_setColorWriteMask",
+        renderEncoderSetColorWriteMask = downcall(lookup, "metallum_MTLRenderCommandEncoder_setColorWriteMask",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderDrawPrimitives = downcall(lookup, "metallum_renderEncoder_drawPrimitives",
+        renderEncoderDrawPrimitives = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawPrimitives",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, LONG, LONG, LONG));
-        renderEncoderDrawIndexedPrimitives = downcall(lookup, "metallum_renderEncoder_drawIndexedPrimitives",
+        renderEncoderDrawIndexedPrimitives = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawIndexedPrimitives",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, ValueLayout.ADDRESS, LONG, LONG, LONG));
-        renderEncoderDrawPrimitivesInstanced = downcall(lookup, "metallum_renderEncoder_drawPrimitivesInstanced",
+        renderEncoderDrawPrimitivesInstanced = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawPrimitivesInstanced",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG));
-        renderEncoderDrawIndexedPrimitivesInstanced = downcall(lookup, "metallum_renderEncoder_drawIndexedPrimitivesInstanced",
+        renderEncoderDrawIndexedPrimitivesInstanced = downcall(lookup, "metallum_MTLRenderCommandEncoder_drawIndexedPrimitivesInstanced",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
 
-        // Compute (使用 optionalDowncall，因为 iOS 原生库可能不包含这些符号)
-        computeEncoderSetComputePipelineState = optionalDowncall(lookup, "metallum_computeEncoder_setComputePipelineState",
+        // Compute (可选，iOS metallum 可能不包含)
+        computeEncoderSetComputePipelineState = optionalDowncall(lookup, "metallum_MTLComputeCommandEncoder_setComputePipelineState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        computeEncoderSetBuffer = optionalDowncall(lookup, "metallum_computeEncoder_setBuffer",
+        computeEncoderSetBuffer = optionalDowncall(lookup, "metallum_MTLComputeCommandEncoder_setBuffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        computeEncoderSetTexture = optionalDowncall(lookup, "metallum_computeEncoder_setTexture",
+        computeEncoderSetTexture = optionalDowncall(lookup, "metallum_MTLComputeCommandEncoder_setTexture",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT));
-        computeEncoderSetSamplerState = optionalDowncall(lookup, "metallum_computeEncoder_setSamplerState",
+        computeEncoderSetSamplerState = optionalDowncall(lookup, "metallum_MTLComputeCommandEncoder_setSamplerState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT));
-        computeEncoderDispatchThreadgroups = optionalDowncall(lookup, "metallum_computeEncoder_dispatchThreadgroups",
+        computeEncoderDispatchThreadgroups = optionalDowncall(lookup, "metallum_MTLComputeCommandEncoder_dispatchThreadgroups",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, INT, INT, INT, INT, INT));
 
         // DepthStencil
