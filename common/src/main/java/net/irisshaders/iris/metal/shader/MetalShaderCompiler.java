@@ -218,66 +218,71 @@ public final class MetalShaderCompiler {
         }
 
         // Vulkan GLSL 要求所有 uniform 必须在 block 中
-        // 使用正则表达式查找并转换非 block 的 uniform
-        // 匹配形如 "uniform 类型 名称;" 的声明，但不匹配 block 中的声明
+        // 将所有顶层 uniform 移动到 iris_VertexTransforms block
         
-        // 首先检查是否已经存在 iris_VertexTransforms block
-        boolean hasVertexTransformsBlock = result.contains("uniform iris_VertexTransforms");
+        // 首先检查是否已经存在 VertexTransforms block
+        boolean hasVertexTransformsBlock = result.contains("iris_VertexTransforms");
         if (hasVertexTransformsBlock) {
-            Iris.logger.info("[Iris-Metal] Shader already has iris_VertexTransforms block");
-        }
-        
-        // 匹配非 block 的 uniform 声明
-        // 这种正则匹配 "uniform 类型 名称;" 但不匹配在 block 内部或已有 block 实例名称的
-        Pattern uniformPattern = Pattern.compile(
-            "^(\\s*)uniform\\s+(\\w+)\\s+(\\w+)\\s*;.*$",
-            Pattern.MULTILINE
-        );
-        
-        List<String> extraUniforms = new ArrayList<>();
-        Matcher matcher = uniformPattern.matcher(result);
-        StringBuffer sb = new StringBuffer();
-        
-        while (matcher.find()) {
-            String indent = matcher.group(1);
-            String uniformType = matcher.group(2);
-            String uniformName = matcher.group(3);
+            Iris.logger.info("[Iris-Metal] Shader already has VertexTransforms block, skipping uniform conversion");
+        } else {
+            // 收集所有不在 block 中的 uniform
+            List<String> topLevelUniforms = new ArrayList<>();
+            String[] lines = result.split("\n");
+            StringBuilder newSource = new StringBuilder();
+            int braceDepth = 0;
             
-            // 检查这个 uniform 是否已经在 block 中（通过检查是否有 "uniformName." 的使用模式）
-            // 如果名称中包含 iris_ 说明它已经在某个 block 中
-            if (!uniformName.startsWith("iris_") && !hasVertexTransformsBlock) {
-                // 将这个 uniform 收集起来，稍后添加到 block
-                extraUniforms.add(uniformType + " " + uniformName);
-                Iris.logger.info("[Iris-Metal] Found non-block uniform to move: {} {}", uniformType, uniformName);
-                // 从原位置删除这行
-                matcher.appendReplacement(sb, "");
-            } else {
-                // 保留这行
-                matcher.appendReplacement(sb, matcher.group(0));
-            }
-        }
-        matcher.appendTail(sb);
-        result = sb.toString();
-        
-        // 如果收集到了额外 uniform 且还没有 VertexTransforms block，添加它
-        if (!extraUniforms.isEmpty() && !hasVertexTransformsBlock) {
-            StringBuilder block = new StringBuilder();
-            block.append("\nlayout(std140) uniform iris_VertexTransforms {\n");
-            for (String uniform : extraUniforms) {
-                block.append("    ").append(uniform).append(";\n");
-            }
-            block.append("} iris_VertexTransforms;\n\n");
-            
-            // 在第一个 uniform block 之前插入
-            int insertPos = result.indexOf("layout(std140) uniform");
-            if (insertPos > 0) {
-                result = result.substring(0, insertPos) + block.toString() + result.substring(insertPos);
-            } else {
-                // 在 #version 之后插入
-                int versionEnd = result.indexOf("\n", result.indexOf("#version"));
-                if (versionEnd > 0) {
-                    result = result.substring(0, versionEnd + 1) + block.toString() + result.substring(versionEnd + 1);
+            for (String line : lines) {
+                // 计算 brace depth
+                for (char c : line.toCharArray()) {
+                    if (c == '{') braceDepth++;
+                    if (c == '}') braceDepth--;
                 }
+                
+                // 检查是否是顶层 uniform
+                if (braceDepth == 0 && line.trim().startsWith("uniform ") && !line.trim().startsWith("uniform {")) {
+                    // 提取 uniform 类型和名称
+                    String trimmed = line.trim();
+                    if (trimmed.endsWith(";")) {
+                        trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
+                        String[] parts = trimmed.split("\\s+");
+                        if (parts.length >= 3) {
+                            String uniformType = parts[1];
+                            String uniformName = parts[2];
+                            topLevelUniforms.add(uniformType + " " + uniformName);
+                            Iris.logger.info("[Iris-Metal] Moving top-level uniform: {} {}", uniformType, uniformName);
+                            continue; // 跳过这行
+                        }
+                    }
+                }
+                
+                newSource.append(line).append("\n");
+            }
+            
+            // 如果有需要移动的 uniform，添加 block
+            if (!topLevelUniforms.isEmpty()) {
+                StringBuilder block = new StringBuilder();
+                block.append("\nlayout(std140) uniform iris_VertexTransforms {\n");
+                for (String uniform : topLevelUniforms) {
+                    block.append("    ").append(uniform).append(";\n");
+                }
+                block.append("} iris_VertexTransforms;\n\n");
+                
+                // 在第一个 uniform block 之前插入
+                String newSourceStr = newSource.toString();
+                int insertPos = newSourceStr.indexOf("layout(std140) uniform");
+                if (insertPos > 0) {
+                    result = newSourceStr.substring(0, insertPos) + block.toString() + newSourceStr.substring(insertPos);
+                } else {
+                    // 在 #version 之后插入
+                    int versionEnd = newSourceStr.indexOf("\n", newSourceStr.indexOf("#version"));
+                    if (versionEnd > 0) {
+                        result = newSourceStr.substring(0, versionEnd + 1) + block.toString() + newSourceStr.substring(versionEnd + 1);
+                    } else {
+                        result = block.toString() + newSourceStr;
+                    }
+                }
+            } else {
+                result = newSource.toString();
             }
         }
         
