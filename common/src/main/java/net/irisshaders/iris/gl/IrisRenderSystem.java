@@ -528,6 +528,10 @@ public class IrisRenderSystem {
         }
 
         public static boolean supportsBufferBlending() {
+                // Metal backend always supports buffer blending
+                if (isUsingMetalBackend()) {
+                        return true;
+                }
                 return GL.getCapabilities().GL_ARB_draw_buffers_blend || GL.getCapabilities().OpenGL40;
         }
 
