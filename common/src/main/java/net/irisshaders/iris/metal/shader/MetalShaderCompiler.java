@@ -197,17 +197,11 @@ public final class MetalShaderCompiler {
     /**
      * 将 GLSL 源码适配为 Vulkan 风格。
      *
-     * <p>Vulkan GLSL 与 OpenGL GLSL 的主要差异：</p>
-     * <ul>
-     *   <li>{@code #version} 必须为 450 或更高</li>
-     *   <li>不能使用 {@code gl_FragColor}，必须声明 {@code layout(location=0) out vec4}</li>
-     *   <li>sampler 必须使用 combined sampler（{@code sampler2D}）或 separate
-     *       （{@code texture2D} + {@code sampler}）</li>
-     *   <li>不能使用 {@code gl_FragData}，必须用显式 output 声明</li>
-     * </ul>
-     *
-     * <p>Iris 的 transformer 层（特别是 {@code LayoutTransformer}）已经处理了大部分
-     * 适配。本方法做最后的兜底处理。</p>
+     * <p>参考 metallum 的 MetalIrisShaderCompiler 实现。主要处理：
+     * 1. 升级 GLSL 版本到 #version 450
+     * 2. 如果 shader 还没有 MetallumIrisUniforms block，则创建一个
+     * 3. 删除顶层的 loose uniform 声明（它们应该已经在 block 中）
+     * 4. 只处理 non-opaque 类型（float, int, mat4 等），sampler/image 保持不变
      */
     private static String adaptGlslForVulkan(String source, ShaderType type) {
         String result = source;
@@ -219,13 +213,75 @@ public final class MetalShaderCompiler {
             Iris.logger.info("[Iris-Metal] Upgraded shader from #version 330 to #version 450");
         }
 
-        // Vulkan GLSL 要求 non-opaque uniform 必须在 uniform block 中
-        // 我们采用另一种方式：把所有顶层 uniform 放到一个统一的 block 中
+        // 检查是否已经有 MetallumIrisUniforms block
+        boolean hasBlock = result.contains("MetallumIrisUniforms");
+        if (hasBlock) {
+            // 如果已经有 block，只需要删除顶层的 loose uniform 声明
+            result = removeTopLevelUniforms(result);
+            Iris.logger.info("[Iris-Metal] Shader already has MetallumIrisUniforms block, removing loose uniforms");
+        } else {
+            // 如果没有 block，创建一个（参考 metallum 的实现）
+            result = createUniformBlock(result);
+        }
         
-        // 首先收集所有顶层 uniform
+        // 打印转换后的 shader 预览
+        String shaderPreview = result.substring(0, Math.min(1500, result.length())).replace("\n", "\\n");
+        Iris.logger.info("[Iris-Metal] Adapted shader preview: {}", shaderPreview);
+
+        return result;
+    }
+    
+    /**
+     * 删除顶层的 loose uniform 声明。
+     * 这些 uniform 应该已经在 MetallumIrisUniforms block 中声明了。
+     */
+    private static String removeTopLevelUniforms(String source) {
+        // 正则匹配顶层的 uniform 声明（不在 block 内）
+        Pattern pattern = Pattern.compile("(?m)^[ \\t]*uniform\\b[^;{}]*;[ \\t]*$");
+        Matcher matcher = pattern.matcher(source);
+        StringBuilder result = new StringBuilder();
+        int lastEnd = 0;
+        
+        while (matcher.find()) {
+            // 检查这行是否在 uniform block 内
+            String matched = matcher.group();
+            int matchStart = matcher.start();
+            
+            // 计算到当前匹配为止的 brace depth
+            String before = source.substring(lastEnd, matchStart);
+            int braceDepth = 0;
+            for (char c : before.toCharArray()) {
+                if (c == '{') braceDepth++;
+                if (c == '}') braceDepth--;
+            }
+            
+            if (braceDepth == 0) {
+                // 在 block 外，删除这行
+                String[] lines = matched.split("\n");
+                for (String line : lines) {
+                    Iris.logger.debug("[Iris-Metal] Removing loose uniform: {}", line.trim());
+                }
+            } else {
+                // 在 block 内，保留
+                result.append(source, lastEnd, matcher.end());
+            }
+            lastEnd = matcher.end();
+        }
+        result.append(source.substring(lastEnd));
+        
+        return result.toString();
+    }
+    
+    /**
+     * 创建 MetallumIrisUniforms block 并处理顶层 uniform。
+     * 参考 metallum 的 wrapLooseUniforms 实现。
+     */
+    private static String createUniformBlock(String source) {
         List<String> topLevelUniforms = new ArrayList<>();
-        String[] lines = result.split("\n");
         StringBuilder shaderBody = new StringBuilder();
+        
+        // 解析源代码，分离顶层 uniform 和 shader body
+        String[] lines = source.split("\n");
         int braceDepth = 0;
         
         for (String line : lines) {
@@ -235,99 +291,81 @@ public final class MetalShaderCompiler {
                 if (c == '}') braceDepth--;
             }
             
-            // 检查是否是顶层 uniform（不在 block 内，且不是 block 定义）
-            if (braceDepth == 0 && line.trim().startsWith("uniform ") && !line.trim().contains("{")) {
-                String trimmed = line.trim();
-                if (trimmed.endsWith(";")) {
-                    String uniformLine = trimmed.substring(0, trimmed.length() - 1).trim();
-                    String[] parts = uniformLine.split("\\s+");
-                    if (parts.length >= 3) {
-                        String uniformType = parts[1];
-                        String uniformName = parts[2];
-                        topLevelUniforms.add(uniformType + " " + uniformName);
-                        Iris.logger.info("[Iris-Metal] Found top-level uniform: {} {}", uniformType, uniformName);
-                        continue; // 跳过原始 uniform 声明行
-                    }
+            // 检查是否是顶层的 uniform 声明（不是 block 定义，不在 block 内）
+            String trimmed = line.trim();
+            if (braceDepth == 0 && trimmed.startsWith("uniform ") && !trimmed.contains("{")) {
+                // 检查是否是 opaque 类型（sampler, image 等）
+                if (!isOpaqueType(trimmed)) {
+                    topLevelUniforms.add(extractUniformDeclaration(trimmed));
+                    Iris.logger.info("[Iris-Metal] Found top-level uniform: {}", trimmed);
+                    continue; // 跳过这行，稍后放到 block 中
                 }
             }
             
             shaderBody.append(line).append("\n");
         }
         
-        // 为所有顶层 uniform 创建一个统一的 block
-        if (!topLevelUniforms.isEmpty()) {
-            // 先构建 block 定义（只包含变量名，不包含任何前缀）
-            // 注意：Vulkan GLSL 要求 uniform block 必须有实例名
-            // 使用 MetallumIrisUniforms 作为 block 名（参考 metallum 的命名）
-            StringBuilder block = new StringBuilder();
-            block.append("layout(std140) uniform MetallumIrisUniforms {\n");
-            for (String uniform : topLevelUniforms) {
-                block.append("    ").append(uniform).append(";\n");
-            }
-            block.append("} MetallumIrisUniforms;\n\n");  // 实例名与 block 名相同
-            
-            // 在 shader body 中第一个 uniform block 之前插入，或者在 #version 之后
-            String body = shaderBody.toString();
-            String blockDef = block.toString();
-            
-            int insertPos = body.indexOf("layout(std140) uniform");
-            if (insertPos > 0) {
-                result = body.substring(0, insertPos) + blockDef + body.substring(insertPos);
-            } else {
-                int versionPos = body.indexOf("#version");
-                if (versionPos >= 0) {
-                    int versionEnd = body.indexOf("\n", versionPos);
-                    if (versionEnd > 0) {
-                        result = body.substring(0, versionEnd + 1) + "\n" + blockDef + body.substring(versionEnd + 1);
-                    } else {
-                        result = blockDef + body;
-                    }
-                } else {
-                    result = blockDef + body;
-                }
-            }
-            
-            // 只替换 shader body 中对这些 uniform 的引用（不包括 block 定义本身）
-            // block 定义在 insertPos 位置之后
-            for (String uniform : topLevelUniforms) {
-                String[] parts = uniform.split("\\s+");
-                String uniformName = parts[1];
-                String fullRef = "MetallumIrisUniforms." + uniformName;
-                
-                // 替换：在 block 定义之后的所有出现
-                int blockEndPos = insertPos > 0 ? insertPos + blockDef.length() : blockDef.length();
-                String beforeBlock = result.substring(0, blockEndPos);
-                String afterBlock = result.substring(blockEndPos);
-                
-                // 在 afterBlock 中替换（只替换标识符，不是 block 成员声明）
-                afterBlock = afterBlock.replaceAll("(?<![a-zA-Z0-9_])" + uniformName + "(?![a-zA-Z0-9_.])", fullRef);
-                
-                result = beforeBlock + afterBlock;
-                
-                // 清理可能产生的双重前缀
-                result = result.replaceAll("MetallumIrisUniforms\\.MetallumIrisUniforms\\.", "MetallumIrisUniforms.");
-                
-                Iris.logger.info("[Iris-Metal] Replacing {} -> MetallumIrisUniforms.{}", uniformName, uniformName);
-            }
-        } else {
-            result = shaderBody.toString();
+        // 如果没有顶层 uniform，直接返回原始 shader
+        if (topLevelUniforms.isEmpty()) {
+            return source;
         }
         
-        // 打印转换后的 shader
-        String shaderPreview = result.substring(0, Math.min(2000, result.length())).replace("\n", "\\n");
-        Iris.logger.info("[Iris-Metal] Adapted shader preview: {}", shaderPreview);
-
-        // gl_FragColor → 显式 output（如果 transformer 未处理）
-        if (type == ShaderType.FRAGMENT && result.contains("gl_FragColor")) {
-            if (!result.contains("layout(location = 0) out vec4")) {
-                result = result.replace(
-                        "#version 450 core",
-                        "#version 450 core\nlayout(location = 0) out vec4 iris_FragColor;");
-            }
-            result = result.replace("gl_FragColor", "iris_FragColor");
+        // 构建 uniform block
+        StringBuilder block = new StringBuilder();
+        block.append("layout(std140) uniform MetallumIrisUniforms {\n");
+        for (String uniform : topLevelUniforms) {
+            block.append("    ").append(uniform).append(";\n");
         }
-
-        return result;
+        block.append("};\n\n");
+        
+        // 在 shader body 的 directive prelude 之后插入 block
+        String body = shaderBody.toString();
+        int insertPos = findDirectivePreludeEnd(body);
+        
+        return body.substring(0, insertPos) + block.toString() + body.substring(insertPos);
+    }
+    
+    /**
+     * 检查是否是 opaque 类型（sampler, image, texture 等）
+     */
+    private static boolean isOpaqueType(String declaration) {
+        String lower = declaration.toLowerCase();
+        return lower.contains("sampler") || lower.contains("image") || lower.contains("texture");
+    }
+    
+    /**
+     * 从 uniform 声明中提取 "类型 名称" 部分
+     */
+    private static String extractUniformDeclaration(String declaration) {
+        // 移除 "uniform " 前缀和结尾的 ";"
+        String trimmed = declaration.trim();
+        if (trimmed.startsWith("uniform ")) {
+            trimmed = trimmed.substring(8);
+        }
+        if (trimmed.endsWith(";")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed.trim();
+    }
+    
+    /**
+     * 找到 directive prelude（#version, #extension 等）结束的位置
+     */
+    private static int findDirectivePreludeEnd(String source) {
+        int index = 0;
+        int length = source.length();
+        while (index < length) {
+            int lineEnd = source.indexOf('\n', index);
+            if (lineEnd < 0) {
+                lineEnd = length;
+            }
+            String line = source.substring(index, lineEnd).trim();
+            if (!line.isEmpty() && !line.startsWith("#")) {
+                return index;
+            }
+            index = lineEnd + 1;
+        }
+        return index;
     }
 
     /**
