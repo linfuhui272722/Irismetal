@@ -260,7 +260,7 @@ public final class IrisMetalNativeBridge {
                         DOUBLE, DOUBLE, INT, FLOAT, FLOAT, FLOAT, FLOAT, INT, DOUBLE));
         commandBufferMakeBlitCommandEncoder = downcall(lookup, "metallum_MTLCommandBuffer_makeBlitCommandEncoder",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        commandBufferMakeComputeCommandEncoder = downcall(lookup, "metallum_MTLCommandBuffer_makeComputeCommandEncoder",
+        commandBufferMakeComputeCommandEncoder = optionalDowncall(lookup, "metallum_MTLCommandBuffer_makeComputeCommandEncoder",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         commandEncoderEndEncoding = downcall(lookup, "metallum_MTLCommandEncoder_endEncoding",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
@@ -329,17 +329,17 @@ public final class IrisMetalNativeBridge {
         renderEncoderDrawIndexedPrimitivesInstanced = downcall(lookup, "metallum_renderEncoder_drawIndexedPrimitivesInstanced",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
 
-        // Compute
-        computeEncoderSetComputePipelineState = downcall(lookup, "metallum_computeEncoder_setComputePipelineState",
+        // Compute (使用 optionalDowncall，因为 iOS 原生库可能不包含这些符号)
+        computeEncoderSetComputePipelineState = optionalDowncall(lookup, "metallum_computeEncoder_setComputePipelineState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        computeEncoderSetBuffer = downcall(lookup, "metallum_computeEncoder_setBuffer",
-                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, INT));
-        computeEncoderSetTexture = downcall(lookup, "metallum_computeEncoder_setTexture",
+        computeEncoderSetBuffer = optionalDowncall(lookup, "metallum_computeEncoder_setBuffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        computeEncoderSetSamplerState = downcall(lookup, "metallum_computeEncoder_setSamplerState",
-                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        computeEncoderDispatchThreadgroups = downcall(lookup, "metallum_computeEncoder_dispatchThreadgroups",
-                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG));
+        computeEncoderSetTexture = optionalDowncall(lookup, "metallum_computeEncoder_setTexture",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT));
+        computeEncoderSetSamplerState = optionalDowncall(lookup, "metallum_computeEncoder_setSamplerState",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT));
+        computeEncoderDispatchThreadgroups = optionalDowncall(lookup, "metallum_computeEncoder_dispatchThreadgroups",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, INT, INT, INT, INT, INT));
 
         // DepthStencil
         makeDepthStencilState = downcall(lookup, "metallum_MTLDevice_makeDepthStencilState",
@@ -378,6 +378,16 @@ public final class IrisMetalNativeBridge {
             throw new IllegalStateException("Missing native symbol: " + name);
         }
         return handle;
+    }
+
+    /**
+     * 可选的 downcall，当符号不存在时返回 null 而不是抛出异常。
+     * 用于 iOS 原生库中可能不存在的可选符号。
+     */
+    private static MethodHandle optionalDowncall(SymbolLookup lookup, String name, FunctionDescriptor desc) {
+        return lookup.find(name)
+                .map(symbol -> LINKER.downcallHandle(symbol, desc, Linker.Option.critical(false)))
+                .orElse(null);
     }
 
     private static MethodHandle downcallWithoutCritical(SymbolLookup lookup, String name, FunctionDescriptor desc) {
@@ -548,6 +558,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static MemorySegment makeComputeCommandEncoder(MemorySegment buffer) {
+        if (commandBufferMakeComputeCommandEncoder == null) {
+            throw new UnsupportedOperationException("Compute command encoder is not available on this platform");
+        }
         try {
             return (MemorySegment) commandBufferMakeComputeCommandEncoder.invoke(buffer);
         } catch (Throwable t) {
@@ -841,6 +854,9 @@ public final class IrisMetalNativeBridge {
 
     // ===== Compute Encoder =====
     public static void computeEncoderSetComputePipelineState(MemorySegment encoder, MemorySegment pipeline) {
+        if (computeEncoderSetComputePipelineState == null) {
+            throw new UnsupportedOperationException("Compute pipeline state is not available on this platform");
+        }
         try {
             computeEncoderSetComputePipelineState.invoke(encoder, pipeline);
         } catch (Throwable t) {
@@ -870,32 +886,44 @@ public final class IrisMetalNativeBridge {
         }
     }
 
-    public static void computeEncoderSetBuffer(MemorySegment encoder, MemorySegment buffer, long offset, long length, int index) {
+    public static void computeEncoderSetBuffer(MemorySegment encoder, MemorySegment buffer, long offset, int index) {
+        if (computeEncoderSetBuffer == null) {
+            throw new UnsupportedOperationException("Compute buffer setting is not available on this platform");
+        }
         try {
-            computeEncoderSetBuffer.invoke(encoder, buffer, offset, length, index);
+            computeEncoderSetBuffer.invoke(encoder, buffer, offset, index);
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
     }
 
-    public static void computeEncoderSetTexture(MemorySegment encoder, MemorySegment texture, long level, int index) {
+    public static void computeEncoderSetTexture(MemorySegment encoder, MemorySegment texture, int index) {
+        if (computeEncoderSetTexture == null) {
+            throw new UnsupportedOperationException("Compute texture setting is not available on this platform");
+        }
         try {
-            computeEncoderSetTexture.invoke(encoder, texture, level, index);
+            computeEncoderSetTexture.invoke(encoder, texture, index);
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
     }
 
-    public static void computeEncoderSetSamplerState(MemorySegment encoder, MemorySegment sampler, long lod, int index) {
+    public static void computeEncoderSetSamplerState(MemorySegment encoder, MemorySegment sampler, int index) {
+        if (computeEncoderSetSamplerState == null) {
+            throw new UnsupportedOperationException("Compute sampler state is not available on this platform");
+        }
         try {
-            computeEncoderSetSamplerState.invoke(encoder, sampler, lod, index);
+            computeEncoderSetSamplerState.invoke(encoder, sampler, index);
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
     }
 
-    public static void computeEncoderDispatchThreadgroups(MemorySegment encoder, long groupsX, long groupsY, long groupsZ,
-                                                           long threadsX, long threadsY, long threadsZ) {
+    public static void computeEncoderDispatchThreadgroups(MemorySegment encoder, int groupsX, int groupsY, int groupsZ,
+                                                           int threadsX, int threadsY, int threadsZ) {
+        if (computeEncoderDispatchThreadgroups == null) {
+            throw new UnsupportedOperationException("Compute dispatch is not available on this platform");
+        }
         try {
             computeEncoderDispatchThreadgroups.invoke(encoder, groupsX, groupsY, groupsZ, threadsX, threadsY, threadsZ);
         } catch (Throwable t) {
