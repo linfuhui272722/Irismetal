@@ -132,10 +132,29 @@ public final class MetalShaderCompiler {
         // 调用 createIntermediary(filename, source, type)
         java.lang.reflect.Method createIntermediary = glslCompilerClass.getMethod(
             "createIntermediary", String.class, String.class, shaderTypeClass);
-        Object intermediary = createIntermediary.invoke(glslCompiler, name + ".glsl", vulkanGlsl, mcShaderType);
+        
+        Object intermediary;
+        try {
+            intermediary = createIntermediary.invoke(glslCompiler, name + ".glsl", vulkanGlsl, mcShaderType);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            Iris.logger.error("GlslCompiler.createIntermediary failed for {}: {}", name, cause != null ? cause.getMessage() : "null");
+            if (cause != null) {
+                Iris.logger.error("Exception type: {}", cause.getClass().getName());
+            }
+            throw new Exception("GlslCompiler.createIntermediary failed", cause);
+        }
+
+        if (intermediary == null) {
+            throw new Exception("GlslCompiler.createIntermediary returned null for " + name);
+        }
 
         java.lang.reflect.Method getSpirvMethod = intermediaryClass.getMethod("getSpirv");
         java.nio.ByteBuffer spirvBuffer = (java.nio.ByteBuffer) getSpirvMethod.invoke(intermediary);
+
+        if (spirvBuffer == null || !spirvBuffer.hasRemaining()) {
+            throw new Exception("GlslCompiler.getSpirv returned null or empty buffer for " + name);
+        }
 
         byte[] spirv = new byte[spirvBuffer.remaining()];
         spirvBuffer.get(spirv);

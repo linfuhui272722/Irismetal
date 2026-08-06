@@ -511,11 +511,13 @@ public final class IrisMetalNativeBridge {
     public static String copyDeviceName(MemorySegment device) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment buf = arena.allocate(256);
-            int len = (int) copyDeviceName.invoke(device, buf, 255L);
-            if (len <= 0) {
+            int result = (int) copyDeviceName.invoke(device, buf, 255L);
+            // Swift returns 0 on success, 1 on error
+            if (result != 0) {
                 return "Unknown Metal Device";
             }
-            return buf.reinterpret(len).getString(0);
+            // Swift writes the string directly to the buffer
+            return buf.getString(0);
         } catch (Throwable t) {
             return "Unknown Metal Device";
         }
@@ -655,8 +657,14 @@ public final class IrisMetalNativeBridge {
                                                  int usage, int storageMode, String label) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment labelSeg = allocateUtf8String(arena, label);
-            return (MemorySegment) createTexture2D.invoke(device, pixelFormat, width, height, depthOrLayers, mipLevels, sampleCount, usage, storageMode, labelSeg);
+            MemorySegment result = (MemorySegment) createTexture2D.invoke(device, pixelFormat, width, height, depthOrLayers, mipLevels, sampleCount, usage, storageMode, labelSeg);
+            if (isNullHandle(result)) {
+                Iris.logger.warn("createTexture2D returned NULL for {} (format={}, {}x{}, mipLevels={})", 
+                    label, pixelFormat, width, height, mipLevels);
+            }
+            return result;
         } catch (Throwable t) {
+            Iris.logger.error("Exception creating 2D texture {}: {}", label, t.getMessage(), t);
             throw new RuntimeException("Failed to create 2D texture", t);
         }
     }
