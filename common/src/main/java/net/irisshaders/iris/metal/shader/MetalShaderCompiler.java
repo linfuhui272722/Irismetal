@@ -78,6 +78,15 @@ public final class MetalShaderCompiler {
      * @return 编译结果，包含 MSL 源码或错误信息
      */
     public static CompileResult compileGlslToMsl(String name, ShaderType type, String glslSource) {
+        // 调试日志：打印 shader 前 500 字符
+        if (glslSource != null && glslSource.length() > 0) {
+            String preview = glslSource.substring(0, Math.min(500, glslSource.length())).replace("\n", "\\n");
+            Iris.logger.info("[Iris-Metal] Compiling {} shader {}: {}...", type, name, preview);
+        } else {
+            Iris.logger.warn("[Iris-Metal] Empty shader source for {}", name);
+            return CompileResult.failure("Empty shader source for " + name);
+        }
+        
         // 步骤 1：GLSL → SPIR-V
         // 使用 MC 26.2 的 GlslCompiler（vanilla Vulkan 后端也用这个）
         // 它会处理 GLSL 版本声明、宏定义等
@@ -200,6 +209,17 @@ public final class MetalShaderCompiler {
             result = result.replaceAll("#version\\s+\\d+(\\s+\\w+)?", "");
             // 在开头添加 Vulkan 风格的 #version
             result = "#version 450 core\n" + result;
+            Iris.logger.info("[Iris-Metal] Added #version 450 to shader");
+        } else {
+            // 检查是否有非 block 的 uniform
+            if (result.contains("uniform ") && !result.contains("uniform {") && result.contains("#version 450")) {
+                // Vulkan GLSL 要求 uniform 在 block 中
+                // 检查是否有形如 "uniform float x;" 的声明
+                Iris.logger.warn("[Iris-Metal] Shader has uniforms outside of blocks! Vulkan requires all uniforms to be in uniform blocks.");
+                // 打印前 1000 字符以供调试
+                String preview = result.substring(0, Math.min(1000, result.length())).replace("\n", "\\n");
+                Iris.logger.info("[Iris-Metal] Shader preview: {}", preview);
+            }
         }
 
         // gl_FragColor → 显式 output（如果 transformer 未处理）
