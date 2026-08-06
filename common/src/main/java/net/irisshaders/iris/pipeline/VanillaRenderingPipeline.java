@@ -7,6 +7,7 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkMeshFormats;
 import net.irisshaders.iris.compat.dh.DHCompat;
 import net.irisshaders.iris.features.FeatureFlags;
+import net.irisshaders.iris.gl.IrisRenderSystem;
 import net.irisshaders.iris.gl.texture.TextureType;
 import net.irisshaders.iris.helpers.Tri;
 import net.irisshaders.iris.mixin.LevelRendererAccessor;
@@ -39,13 +40,16 @@ public class VanillaRenderingPipeline implements WorldRenderingPipeline {
 
 	@Override
 	public void beginLevelRendering() {
-        if (GL.getCapabilities().GL_ARB_clip_control) {
-            ARBClipControl.glClipControl(ARBClipControl.GL_LOWER_LEFT, ARBClipControl.GL_ZERO_TO_ONE);
-        }
+		// Metal 后端模式下，跳过 OpenGL 调用
+		if (IrisRenderSystem.isUsingMetalBackend()) {
+			return;
+		}
+		if (GL.getCapabilities().GL_ARB_clip_control) {
+			ARBClipControl.glClipControl(ARBClipControl.GL_LOWER_LEFT, ARBClipControl.GL_ZERO_TO_ONE);
+		}
 		// Use the default Minecraft framebuffer and ensure that no programs are in use
 		GlStateManager._glUseProgram(0);
 	}
-
 	@Override
 	public void renderShadows(LevelRendererAccessor worldRenderer, Camera camera, CameraRenderState renderState) {
 		// stub: nothing to do here
