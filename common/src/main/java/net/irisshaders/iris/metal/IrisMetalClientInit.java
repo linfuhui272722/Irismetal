@@ -27,8 +27,16 @@ public class IrisMetalClientInit implements ClientModInitializer {
             
             // 在非Apple平台或者模拟器环境，先检查metallum是否已加载
             // 如果metallum已加载，它可能已经接管了渲染
+            // iOS也使用metallum，所以我们需要检查metallum是否已加载
             if (!osName.contains("Mac") && !osName.contains("Darwin")) {
                 LOGGER.info("[Iris-Metal] Not running on macOS, checking for metallum...");
+                if (isMetallumLoaded()) {
+                    LOGGER.info("[Iris-Metal] Metallum is loaded, delegating Metal rendering to metallum");
+                    return;
+                }
+            } else if (osName.contains("Darwin") && !osName.contains("Mac")) {
+                // iOS 或其他 Darwin 系统
+                LOGGER.info("[Iris-Metal] Running on Darwin-based system (possibly iOS), checking for metallum...");
                 if (isMetallumLoaded()) {
                     LOGGER.info("[Iris-Metal] Metallum is loaded, delegating Metal rendering to metallum");
                     return;
@@ -77,7 +85,7 @@ public class IrisMetalClientInit implements ClientModInitializer {
      */
     private boolean isMetallumLoaded() {
         try {
-            Class<?> metallumClass = Class.forName("com.matthewperiwerskic.metallum.Metallum");
+            Class<?> metallumClass = Class.forName("com.metallum.Metallum");
             if (metallumClass != null) {
                 LOGGER.info("[Iris-Metal] Found metallum class: {}", metallumClass.getName());
                 return true;

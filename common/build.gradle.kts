@@ -46,10 +46,10 @@ buildConfig {
 
 // === 下载 metallum 主 jar 文件 ===
 val downloadMetallum by tasks.registering(Exec::class) {
-    onlyIf { !file("libs/metallum-1.0.3.jar").exists() }
+    onlyIf { !file("libs/metallum-1.0.2.jar").exists() }
     commandLine(
-        "curl", "-L", "-o", "libs/metallum-1.0.3.jar",
-        "https://github.com/EternityQwQ/MetalUniversal/releases/download/MetalUniversal_1.0.3/metallum-1.0.3.jar"
+        "curl", "-L", "-o", "libs/metallum-1.0.2.jar",
+        "https://github.com/EternityQwQ/MetalUniversal/releases/download/MetalUniversal_1.0.3/metallum-1.0.2.jar"
     )
     doFirst {
         mkdir("libs")
@@ -67,7 +67,7 @@ dependencies {
     compileOnly(files(rootDir.resolve("DHApi.jar")))
     
     // Metallum - 同时添加主 jar 和 sources jar
-    compileOnly(files("libs/metallum-1.0.3.jar"))
+    compileOnly(files("libs/metallum-1.0.2.jar"))
 
     // LWJGL SPIRV-Cross binding for Metal shader compilation
     implementation("org.lwjgl:lwjgl-spvc:${rootProject.extra["LWJGL_VERSION"]}")
