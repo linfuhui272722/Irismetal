@@ -19,6 +19,22 @@ public final class SPIRVToMslConverter {
     private static final int MSL_VERSION_3_0 = 0x30000;
     private static final int MSL_VERSION_4_0 = 0x40000;
     
+    static {
+        // 确保 metallum 配置了 SPIR-V 到 MSL 的库
+        // metallum 会在 onPreLaunch 时调用 ensureSpvcLibraryConfigured()
+        // 但如果我们的代码在 metallum 初始化之前运行，需要手动配置
+        try {
+            Class<?> metalNativeBridge = Class.forName("com.metallum.client.metal.render.bridge.MetalNativeBridge");
+            java.lang.reflect.Method ensureMethod = metalNativeBridge.getMethod("ensureSpvcLibraryConfigured");
+            ensureMethod.invoke(null);
+        } catch (ClassNotFoundException e) {
+            // metallum 未安装，SPIR-V 到 MSL 转换不可用
+            Iris.logger.warn("Metallum not found, SPIR-V to MSL conversion unavailable");
+        } catch (Exception e) {
+            Iris.logger.warn("Failed to ensure SPIR-V library configured: " + e.getMessage());
+        }
+    }
+    
     private SPIRVToMslConverter() {}
     
     /**

@@ -276,12 +276,13 @@ public final class IrisMetalNativeBridge {
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
 
         // 纹理
+        // Note: pixelFormat is MTLPixelFormat (UInt32 on Swift side), so use JAVA_INT
         createTexture2D = downcall(lookup, "metallum_create_texture_2d",
-                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, LONG, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
         createTexture3D = optionalDowncall(lookup, "metallum_create_texture_3d",
-                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
         createTextureCube = optionalDowncall(lookup, "metallum_create_texture_cube",
-                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
         textureReplaceRegion = optionalDowncall(lookup, "metallum_texture_replace_region",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, INT, LONG));
         textureGetBytes = optionalDowncall(lookup, "metallum_texture_get_bytes",
