@@ -224,9 +224,12 @@ public final class MetalShaderCompiler {
     /**
      * 收集所有 loose uniform，创建 MetallumIrisUniforms block，并删除 loose uniform 声明。
      * 参考 metallum 的 MetalIrisShaderCompiler.wrapLooseUniforms 实现。
+     * 
+     * 注意：sampler/image 类型不能放入 std140 uniform block，必须保留为 loose uniform。
      */
     private static String wrapLooseUniforms(String source) {
-        List<String> uniforms = new ArrayList<>();
+        List<String> blockUniforms = new ArrayList<>();
+        List<String> samplerUniforms = new ArrayList<>();
         StringBuilder body = new StringBuilder();
         String[] lines = source.split("\n");
         int braceDepth = 0;
@@ -244,30 +247,35 @@ public final class MetalShaderCompiler {
             String trimmed = line.trim();
             
             // 检查是否是顶层的 uniform 声明（不在 block 内，不是 block 定义）
-            // 允许 opaque 类型也进入 block（sampler, image 等）
             if (braceDepth == 0 && trimmed.startsWith("uniform ") && !trimmed.contains("{")) {
-                // 收集这个 uniform
                 String uniformDecl = extractUniformDeclaration(trimmed);
                 if (uniformDecl != null && !uniformDecl.isEmpty()) {
-                    uniforms.add(uniformDecl);
-                    Iris.logger.info("[Iris-Metal] Found loose uniform: {}", uniformDecl);
+                    if (isOpaqueType(trimmed)) {
+                        // sampler/image 保留为 loose uniform
+                        samplerUniforms.add(uniformDecl);
+                        body.append(line).append("\n");
+                        Iris.logger.info("[Iris-Metal] Keeping sampler uniform: {}", uniformDecl);
+                    } else {
+                        // non-opaque 类型放入 block
+                        blockUniforms.add(uniformDecl);
+                        Iris.logger.info("[Iris-Metal] Found block uniform: {}", uniformDecl);
+                    }
                 }
-                // 不添加到 body，删除这行
                 continue;
             }
             
             body.append(line).append("\n");
         }
         
-        // 如果没有 loose uniform，直接返回
-        if (uniforms.isEmpty()) {
+        // 如果没有 block uniform，直接返回
+        if (blockUniforms.isEmpty()) {
             return source;
         }
         
         // 创建 MetallumIrisUniforms block
         StringBuilder block = new StringBuilder();
         block.append("layout(std140) uniform MetallumIrisUniforms {\n");
-        for (String uniform : uniforms) {
+        for (String uniform : blockUniforms) {
             block.append("    ").append(uniform).append(";\n");
         }
         block.append("};\n\n");
@@ -277,6 +285,15 @@ public final class MetalShaderCompiler {
         int insertPos = findDirectivePreludeEnd(shaderBody);
         
         return shaderBody.substring(0, insertPos) + block.toString() + shaderBody.substring(insertPos);
+    }
+    
+    /**
+     * 检查是否是 opaque 类型（sampler, image, texture 等）
+     * Opaque 类型的 uniform 不能放入 std140 uniform block
+     */
+    private static boolean isOpaqueType(String declaration) {
+        String lower = declaration.toLowerCase();
+        return lower.contains("sampler") || lower.contains("image") || lower.contains("texture") || lower.contains("atomic_uint");
     }
     
     /**
