@@ -116,16 +116,23 @@ public final class MetalShaderCompiler {
         String vulkanGlsl = adaptGlslForVulkan(glslSource, type);
 
         // 使用反射调用 MC 的 GlslCompiler（避免硬编译依赖）
-        // GlslCompiler.compile(ShaderType, String) 返回 IntermediaryShaderModule
-        // IntermediaryShaderModule.getSpirv() 返回 ByteBuffer
+        // 正确的方法签名：GlslCompiler.createIntermediary(String filename, String source, ShaderType type)
+        // 这与 metallum 使用的方式一致
         Class<?> glslCompilerClass = Class.forName("com.mojang.blaze3d.vulkan.glsl.GlslCompiler");
         Class<?> shaderTypeClass = Class.forName("com.mojang.blaze3d.shaders.ShaderType");
         Class<?> intermediaryClass = Class.forName("com.mojang.blaze3d.vulkan.glsl.IntermediaryShaderModule");
 
         Object mcShaderType = mapShaderTypeToMc(shaderTypeClass, type);
 
-        java.lang.reflect.Method compileMethod = glslCompilerClass.getMethod("compile", shaderTypeClass, String.class);
-        Object intermediary = compileMethod.invoke(null, mcShaderType, vulkanGlsl);
+        // 使用 createIntermediary 方法，与 metallum 一致
+        java.lang.reflect.Constructor<?> glslCompilerConstructor = glslCompilerClass.getDeclaredConstructor();
+        glslCompilerConstructor.setAccessible(true);
+        Object glslCompiler = glslCompilerConstructor.newInstance();
+
+        // 调用 createIntermediary(filename, source, type)
+        java.lang.reflect.Method createIntermediary = glslCompilerClass.getMethod(
+            "createIntermediary", String.class, String.class, shaderTypeClass);
+        Object intermediary = createIntermediary.invoke(glslCompiler, name + ".glsl", vulkanGlsl, mcShaderType);
 
         java.lang.reflect.Method getSpirvMethod = intermediaryClass.getMethod("getSpirv");
         java.nio.ByteBuffer spirvBuffer = (java.nio.ByteBuffer) getSpirvMethod.invoke(intermediary);
@@ -137,6 +144,13 @@ public final class MetalShaderCompiler {
         try {
             java.lang.reflect.Method closeMethod = intermediaryClass.getMethod("close");
             closeMethod.invoke(intermediary);
+        } catch (Exception ignored) {
+        }
+
+        // 关闭 GlslCompiler
+        try {
+            java.lang.reflect.Method compilerCloseMethod = glslCompilerClass.getMethod("close");
+            compilerCloseMethod.invoke(glslCompiler);
         } catch (Exception ignored) {
         }
 
