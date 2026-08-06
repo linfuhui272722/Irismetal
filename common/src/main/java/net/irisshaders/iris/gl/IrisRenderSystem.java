@@ -48,7 +48,6 @@ public class IrisRenderSystem {
         /**
          * 安全地检查是否使用 Metal 后端。
          * 这个方法可以安全地在任何时候调用，包括 static 初始化期间。
-         * Public 以便其他包的类（如 SamplerLimits）可以访问。
          * 
          * 注意：这个方法不依赖任何 Iris 类，只使用标准 Java API。
          */
@@ -57,104 +56,96 @@ public class IrisRenderSystem {
                         return isUsingMetal;
                 }
                 
-                // 首先检查系统属性（最可靠的方法）
+                // 首先尝试反射获取 IrisMixinPlugin 的值
                 try {
-                        String backend = System.getProperty("preferredGraphicsBackend", "");
-                        if (backend.isEmpty()) {
-                                backend = System.getenv("MINECRAFT_GRAPHICS_BACKEND");
+                        Class<?> mixinPluginClass = Class.forName("net.irisshaders.iris.mixin.IrisMixinPlugin");
+                        java.lang.reflect.Field usingMetalField = mixinPluginClass.getDeclaredField("usingMetal");
+                        usingMetalField.setAccessible(true);
+                        boolean reflectedValue = usingMetalField.getBoolean(null);
+                        
+                        if (reflectedValue) {
+                                // 如果反射获取到 true，直接返回
+                                isUsingMetal = true;
+                                metalModeChecked = true;
+                                return true;
                         }
-                        if (backend.isEmpty()) {
-                                backend = System.getenv("GRAPHICS_BACKEND");
-                        }
-                        if (!backend.isEmpty()) {
-                                String lower = backend.toLowerCase(java.util.Locale.ROOT);
-                                if (lower.contains("metal") || lower.equals("default")) {
-                                        isUsingMetal = true;
-                                        metalModeChecked = true;
-                                        return true;
-                                }
-                        }
-                } catch (Throwable ignored) {}
+                } catch (Throwable e) {
+                        // 反射失败，继续尝试其他方法
+                }
                 
                 // 尝试直接读取 options.txt 文件
                 // 这是最可靠的方法，因为不依赖任何类加载
+                isUsingMetal = checkMetalInOptionsFile();
+                
+                metalModeChecked = true;
+                return isUsingMetal;
+        }
+        
+        /**
+         * 在各种可能的位置查找 options.txt 并检查 Metal 设置。
+         */
+        private static boolean checkMetalInOptionsFile() {
+                java.util.ArrayList<java.nio.file.Path> pathsToTry = new java.util.ArrayList<>();
+                
+                // 1. user.dir 路径
+                String userDir = System.getProperty("user.dir", "");
+                if (!userDir.isEmpty()) {
+                        pathsToTry.add(java.nio.file.Paths.get(userDir, "options.txt"));
+                        pathsToTry.add(java.nio.file.Paths.get(userDir, ".minecraft", "options.txt"));
+                        pathsToTry.add(java.nio.file.Paths.get(userDir, "minecraft", "options.txt"));
+                        pathsToTry.add(java.nio.file.Paths.get(userDir, "..", "options.txt"));
+                }
+                
+                // 2. 常见相对路径
+                pathsToTry.add(java.nio.file.Paths.get("options.txt"));
+                pathsToTry.add(java.nio.file.Paths.get("../options.txt"));
+                pathsToTry.add(java.nio.file.Paths.get("../../options.txt"));
+                
+                // 3. iOS 环境下搜索
                 try {
-                        // 尝试多种路径
-                        java.util.ArrayList<java.nio.file.Path> pathsToTry = new java.util.ArrayList<>();
-                        
-                        // 1. user.dir 路径
-                        String userDir = System.getProperty("user.dir", "");
-                        if (!userDir.isEmpty()) {
-                                pathsToTry.add(java.nio.file.Paths.get(userDir, "options.txt"));
-                                pathsToTry.add(java.nio.file.Paths.get(userDir, ".minecraft", "options.txt"));
-                                pathsToTry.add(java.nio.file.Paths.get(userDir, "minecraft", "options.txt"));
-                        }
-                        
-                        // 2. 常见相对路径
-                        pathsToTry.add(java.nio.file.Paths.get("options.txt"));
-                        pathsToTry.add(java.nio.file.Paths.get(".minecraft", "options.txt"));
-                        pathsToTry.add(java.nio.file.Paths.get("minecraft", "options.txt"));
-                        pathsToTry.add(java.nio.file.Paths.get("..", "options.txt"));
-                        pathsToTry.add(java.nio.file.Paths.get("..", ".minecraft", "options.txt"));
-                        
-                        // 3. 尝试查找 minecraft 目录（iOS 环境下）
-                        try {
-                                java.nio.file.DirectoryStream.Filter<java.nio.file.Path> dirFilter = 
-                                        entry -> java.nio.file.Files.isDirectory(entry) && 
-                                                (entry.getFileName().toString().contains("minecraft") ||
-                                                 entry.getFileName().toString().contains("games") ||
-                                                 entry.getFileName().toString().contains("Application"));
+                        java.nio.file.Path iosBase = java.nio.file.Paths.get("/private/var/mobile/Containers/Data/Application");
+                        if (java.nio.file.Files.exists(iosBase) && java.nio.file.Files.isDirectory(iosBase)) {
                                 try (java.nio.file.DirectoryStream<java.nio.file.Path> stream = 
-                                        java.nio.file.Files.newDirectoryStream(java.nio.file.Paths.get("/private/var/mobile/Containers/Data/Application"), dirFilter)) {
+                                        java.nio.file.Files.newDirectoryStream(iosBase)) {
                                         for (java.nio.file.Path appPath : stream) {
+                                                if (!java.nio.file.Files.isDirectory(appPath)) continue;
+                                                
+                                                // Documents/Library/Application Support/minecraft
                                                 java.nio.file.Path mcPath = appPath.resolve("Documents/Library/Application Support/minecraft");
                                                 if (java.nio.file.Files.exists(mcPath)) {
                                                         pathsToTry.add(mcPath.resolve("options.txt"));
-                                                        // 也检查 instances 子目录
+                                                        pathsToTry.add(mcPath.resolve("options.txt.txt")); // 有时会有双扩展名
+                                                        
+                                                        // instances 子目录
                                                         java.nio.file.Path instancesPath = mcPath.resolve("instances");
                                                         if (java.nio.file.Files.exists(instancesPath)) {
                                                                 try (java.nio.file.DirectoryStream<java.nio.file.Path> instances = 
                                                                         java.nio.file.Files.newDirectoryStream(instancesPath)) {
                                                                         for (java.nio.file.Path instance : instances) {
                                                                                 pathsToTry.add(instance.resolve("options.txt"));
+                                                                                pathsToTry.add(instance.resolve("options.txt.txt"));
                                                                         }
                                                                 }
                                                         }
                                                 }
                                         }
                                 }
-                        } catch (Throwable ignored) {}
-                        
-                        // 尝试每个路径
-                        for (java.nio.file.Path path : pathsToTry) {
-                                try {
-                                        if (java.nio.file.Files.exists(path) && java.nio.file.Files.isReadable(path)) {
-                                                String content = new String(java.nio.file.Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
-                                                if (checkBackendInContent(content)) {
-                                                        isUsingMetal = true;
-                                                        metalModeChecked = true;
-                                                        return true;
-                                                }
-                                        }
-                                } catch (Throwable ignored) {}
                         }
-                        
                 } catch (Throwable ignored) {}
                 
-                // 最后尝试反射获取 IrisMixinPlugin 的值（作为后备）
-                try {
-                        Class<?> mixinPluginClass = Class.forName("net.irisshaders.iris.mixin.IrisMixinPlugin");
-                        java.lang.reflect.Field usingMetalField = mixinPluginClass.getDeclaredField("usingMetal");
-                        usingMetalField.setAccessible(true);
-                        isUsingMetal = usingMetalField.getBoolean(null);
-                        metalModeChecked = true;
-                        return isUsingMetal;
-                } catch (Throwable e) {
-                        // 无法获取，返回 false
+                // 尝试每个路径
+                for (java.nio.file.Path path : pathsToTry) {
+                        try {
+                                if (java.nio.file.Files.exists(path) && java.nio.file.Files.isReadable(path)) {
+                                        byte[] bytes = java.nio.file.Files.readAllBytes(path);
+                                        String content = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                                        if (checkBackendInContent(content)) {
+                                                return true;
+                                        }
+                                }
+                        } catch (Throwable ignored) {}
                 }
                 
-                isUsingMetal = false;
-                metalModeChecked = true;
                 return false;
         }
         
