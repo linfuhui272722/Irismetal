@@ -257,12 +257,13 @@ public final class MetalShaderCompiler {
         // 为所有顶层 uniform 创建一个统一的 block
         if (!topLevelUniforms.isEmpty()) {
             // 先构建 block 定义（只包含变量名，不包含任何前缀）
+            // 注意：Vulkan GLSL 要求 uniform block 必须有实例名
             StringBuilder block = new StringBuilder();
             block.append("layout(std140) uniform iris_VertexUniforms {\n");
             for (String uniform : topLevelUniforms) {
                 block.append("    ").append(uniform).append(";\n");
             }
-            block.append("};\n\n");
+            block.append("} iris_VertexUniforms;\n\n");  // 实例名与 block 名相同
             
             // 在 shader body 中第一个 uniform block 之前插入，或者在 #version 之后
             String body = shaderBody.toString();
