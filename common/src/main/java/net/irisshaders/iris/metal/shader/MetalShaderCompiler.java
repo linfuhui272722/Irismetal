@@ -225,7 +225,7 @@ public final class MetalShaderCompiler {
         // 首先收集所有顶层 uniform
         List<String> topLevelUniforms = new ArrayList<>();
         String[] lines = result.split("\n");
-        StringBuilder filteredSource = new StringBuilder();
+        StringBuilder shaderBody = new StringBuilder();
         int braceDepth = 0;
         
         for (String line : lines) {
@@ -246,16 +246,17 @@ public final class MetalShaderCompiler {
                         String uniformName = parts[2];
                         topLevelUniforms.add(uniformType + " " + uniformName);
                         Iris.logger.info("[Iris-Metal] Found top-level uniform: {} {}", uniformType, uniformName);
-                        continue; // 跳过这行
+                        continue; // 跳过原始 uniform 声明行
                     }
                 }
             }
             
-            filteredSource.append(line).append("\n");
+            shaderBody.append(line).append("\n");
         }
         
         // 为所有顶层 uniform 创建一个统一的 block
         if (!topLevelUniforms.isEmpty()) {
+            // 先构建 block 定义（只包含变量名，不包含任何前缀）
             StringBuilder block = new StringBuilder();
             block.append("layout(std140) uniform iris_VertexUniforms {\n");
             for (String uniform : topLevelUniforms) {
@@ -263,31 +264,51 @@ public final class MetalShaderCompiler {
             }
             block.append("};\n\n");
             
-            // 在第一个 uniform block 之前插入
-            String filtered = filteredSource.toString();
-            int insertPos = filtered.indexOf("layout(std140) uniform");
+            // 在 shader body 中第一个 uniform block 之前插入，或者在 #version 之后
+            String body = shaderBody.toString();
+            String blockDef = block.toString();
+            
+            int insertPos = body.indexOf("layout(std140) uniform");
             if (insertPos > 0) {
-                result = filtered.substring(0, insertPos) + block.toString() + filtered.substring(insertPos);
+                result = body.substring(0, insertPos) + blockDef + body.substring(insertPos);
             } else {
-                // 在 #version 之后插入
-                int versionEnd = filtered.indexOf("\n", filtered.indexOf("#version"));
-                if (versionEnd > 0) {
-                    result = filtered.substring(0, versionEnd + 1) + block.toString() + filtered.substring(versionEnd + 1);
+                int versionPos = body.indexOf("#version");
+                if (versionPos >= 0) {
+                    int versionEnd = body.indexOf("\n", versionPos);
+                    if (versionEnd > 0) {
+                        result = body.substring(0, versionEnd + 1) + "\n" + blockDef + body.substring(versionEnd + 1);
+                    } else {
+                        result = blockDef + body;
+                    }
                 } else {
-                    result = block.toString() + filtered;
+                    result = blockDef + body;
                 }
             }
             
-            // 替换 shader 中对这些 uniform 的引用
+            // 只替换 shader body 中对这些 uniform 的引用（不包括 block 定义本身）
+            // block 定义在 insertPos 位置之后
             for (String uniform : topLevelUniforms) {
                 String[] parts = uniform.split("\\s+");
                 String uniformName = parts[1];
-                // 替换 "uniformName" -> "iris_VertexUniforms.uniformName"
-                result = result.replaceAll("\\b" + uniformName + "\\b", "iris_VertexUniforms." + uniformName);
+                String fullRef = "iris_VertexUniforms." + uniformName;
+                
+                // 替换：在 block 定义之后的所有出现
+                int blockEndPos = insertPos > 0 ? insertPos + blockDef.length() : blockDef.length();
+                String beforeBlock = result.substring(0, blockEndPos);
+                String afterBlock = result.substring(blockEndPos);
+                
+                // 在 afterBlock 中替换（只替换标识符，不是 block 成员声明）
+                afterBlock = afterBlock.replaceAll("(?<![a-zA-Z0-9_])" + uniformName + "(?![a-zA-Z0-9_.])", fullRef);
+                
+                result = beforeBlock + afterBlock;
+                
+                // 清理可能产生的双重前缀（如 iris_VertexUniforms.iris_VertexUniforms.xxx）
+                result = result.replaceAll("iris_VertexUniforms\\.iris_VertexUniforms\\.", "iris_VertexUniforms.");
+                
                 Iris.logger.info("[Iris-Metal] Replacing {} -> iris_VertexUniforms.{}", uniformName, uniformName);
             }
         } else {
-            result = filteredSource.toString();
+            result = shaderBody.toString();
         }
         
         // 打印转换后的 shader
