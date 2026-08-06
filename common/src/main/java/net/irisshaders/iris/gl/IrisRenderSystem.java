@@ -755,6 +755,10 @@ public class IrisRenderSystem {
         }
 
         public static GlDevice getGlDevice() {
+                // Metal 模式下没有 GlDevice
+                if (isUsingMetalBackend()) {
+                        return null;
+                }
                 return (GlDevice) ((GpuDeviceAccessor) RenderSystem.getDevice()).getBackend();
         }
 

@@ -62,6 +62,10 @@ public class MixinRenderTarget implements Blaze3dRenderTargetExt, RenderTargetIn
 
 	@Override
 	public void iris$bindFramebuffer() {
+		// Metal 模式下使用默认的 framebuffer 绑定
+		if (IrisRenderSystem.isUsingMetalBackend()) {
+			return;
+		}
 		var fbo = IrisRenderSystem.getGlDevice().frameBufferCache().getFbo(IrisRenderSystem.getGlDevice().directStateAccess(), List.of((FrameBufferAttachment) this.colorTexture), (FrameBufferAttachment) this.depthTexture);
 		GlStateManager._glBindFramebuffer(GlConst.GL_FRAMEBUFFER, fbo);
 	}

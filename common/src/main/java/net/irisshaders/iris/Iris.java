@@ -411,8 +411,13 @@ public class Iris {
 			success = GLDebug.setupDebugMessageCallback();
 		} else {
 			GLDebug.reloadDebugState();
-			GlDebug.enableDebugCallback(Minecraft.getInstance().options.glDebugVerbosity, false, new HashSet<>((IrisRenderSystem.getGlDevice()).getDeviceInfo().underlyingExtensions()));
-			success = 1;
+			// Metal 模式下不设置 debug callback
+			if (IrisRenderSystem.isUsingMetalBackend()) {
+				success = 0;
+			} else {
+				GlDebug.enableDebugCallback(Minecraft.getInstance().options.glDebugVerbosity, false, new HashSet<>((IrisRenderSystem.getGlDevice()).getDeviceInfo().underlyingExtensions()));
+				success = 1;
+			}
 		}
 
 		logger.info("Debug functionality is " + (enable ? "enabled, logging will be more verbose!" : "disabled."));

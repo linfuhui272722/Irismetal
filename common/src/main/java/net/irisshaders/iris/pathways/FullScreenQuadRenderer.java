@@ -49,6 +49,10 @@ public class FullScreenQuadRenderer {
 	}
 
 	public void bind() {
+		// Metal 模式下使用默认的 VAO 绑定
+		if (IrisRenderSystem.isUsingMetalBackend()) {
+			return;
+		}
 		((GlDevice) ((GpuDeviceAccessor) RenderSystem.getDevice()).getBackend()).vertexArrayCache().bindVertexArray(new VertexFormat[] { DefaultVertexFormat.POSITION_TEX }, new GpuBufferSlice[] { quad.slice() }, null);
 	}
 }
