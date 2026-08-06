@@ -132,6 +132,12 @@ public class Iris {
 			return;
 		}
 
+		// Metal 模式下跳过 OpenGL 初始化，因为没有 GL 上下文
+		if (IrisRenderSystem.isUsingMetalBackend()) {
+			logger.info("Metal backend active, skipping OpenGL shader compilation and initialization.");
+			return;
+		}
+
 		if (GL.getCapabilities().GL_KHR_parallel_shader_compile) {
 			KHRParallelShaderCompile.glMaxShaderCompilerThreadsKHR(10);
 		} else if (GL.getCapabilities().GL_ARB_parallel_shader_compile) {
