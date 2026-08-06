@@ -80,8 +80,9 @@ public final class MetalTexture implements AutoCloseable {
 
         switch (type) {
             case TEXTURE_2D:
+                // cubeCompatible=0 means regular 2D texture, not a cube
                 this.handle = IrisMetalNativeBridge.createTexture2D(device, mtlPixelFormat,
-                        width, height, 1, mipLevels, 1, usage, storageMode, label);
+                        width, height, 1, mipLevels, 0, usage, storageMode, label);
                 break;
             case TEXTURE_3D:
                 if (!IrisMetalNativeBridge.isTexture3DAvailable()) {
