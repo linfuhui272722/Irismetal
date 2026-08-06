@@ -74,11 +74,56 @@ public class IrisRenderSystem {
                 }
                 
                 // 尝试直接读取 options.txt 文件
-                // 这是最可靠的方法，因为不依赖任何类加载
-                isUsingMetal = checkMetalInOptionsFile();
+                if (checkMetalInOptionsFile()) {
+                        isUsingMetal = true;
+                        metalModeChecked = true;
+                        return true;
+                }
                 
+                // 在 iOS/PojavLauncher 环境下，如果检测失败，假设使用 Metal
+                // 这是因为 PojavLauncher 总是使用 Metal 后端
+                if (isRunningOnIOS()) {
+                        isUsingMetal = true;
+                        metalModeChecked = true;
+                        return true;
+                }
+                
+                isUsingMetal = false;
                 metalModeChecked = true;
-                return isUsingMetal;
+                return false;
+        }
+        
+        /**
+         * 检查是否运行在 iOS 环境下。
+         */
+        private static boolean isRunningOnIOS() {
+                try {
+                        // 检查操作系统
+                        String osName = System.getProperty("os.name", "");
+                        String osVersion = System.getProperty("os.version", "");
+                        String osArch = System.getProperty("os.arch", "");
+                        
+                        // iOS 上 Java 会报告为 Mac OS X，架构为 aarch64
+                        if (osName.contains("Mac") || osName.contains("Darwin")) {
+                                if (osArch.contains("aarch64") || osArch.contains("arm64")) {
+                                        return true;
+                                }
+                        }
+                        
+                        // 检查设备信息
+                        String cpuBrand = System.getProperty("cpu", "");
+                        if (cpuBrand.contains("Apple")) {
+                                return true;
+                        }
+                        
+                        // 检查是否有 iOS 特有的路径
+                        if (new java.io.File("/private/var/mobile/Containers/Data/Application").exists()) {
+                                return true;
+                        }
+                        
+                } catch (Throwable ignored) {}
+                
+                return false;
         }
         
         /**
