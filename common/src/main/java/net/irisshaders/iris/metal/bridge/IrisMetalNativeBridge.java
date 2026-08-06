@@ -268,9 +268,9 @@ public final class IrisMetalNativeBridge {
         // 纹理
         createTexture2D = downcall(lookup, "metallum_create_texture_2d",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
-        createTexture3D = downcall(lookup, "metallum_create_texture_3d",
+        createTexture3D = optionalDowncall(lookup, "metallum_create_texture_3d",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
-        createTextureCube = downcall(lookup, "metallum_create_texture_cube",
+        createTextureCube = optionalDowncall(lookup, "metallum_create_texture_cube",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
         textureReplaceRegion = downcall(lookup, "metallum_texture_replace_region",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, INT, LONG));
@@ -290,7 +290,7 @@ public final class IrisMetalNativeBridge {
         // Render Pipeline
         compileRenderPipeline = downcall(lookup, "metallum_compile_render_pipeline",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS));
-        compileComputePipeline = downcall(lookup, "metallum_compile_compute_pipeline",
+        compileComputePipeline = optionalDowncall(lookup, "metallum_compile_compute_pipeline",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
         renderEncoderSetRenderPipelineState = downcall(lookup, "metallum_renderEncoder_setRenderPipelineState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -590,6 +590,9 @@ public final class IrisMetalNativeBridge {
 
     public static MemorySegment createTexture3D(MemorySegment device, int pixelFormat, long width, long height,
                                                  long depth, long mipLevels, int usage, int storageMode, String label) {
+        if (createTexture3D == null) {
+            throw new UnsupportedOperationException("3D textures are not supported on this platform");
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment labelSeg = allocateUtf8String(arena, label);
             return (MemorySegment) createTexture3D.invoke(device, pixelFormat, width, height, depth, mipLevels, usage, storageMode, labelSeg);
@@ -600,6 +603,9 @@ public final class IrisMetalNativeBridge {
 
     public static MemorySegment createTextureCube(MemorySegment device, int pixelFormat, long size, long mipLevels,
                                                    int usage, int storageMode, String label) {
+        if (createTextureCube == null) {
+            throw new UnsupportedOperationException("Cube textures are not supported on this platform");
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment labelSeg = allocateUtf8String(arena, label);
             return (MemorySegment) createTextureCube.invoke(device, pixelFormat, size, mipLevels, usage, storageMode, labelSeg);
@@ -694,6 +700,9 @@ public final class IrisMetalNativeBridge {
     }
 
     public static MemorySegment compileComputePipeline(MemorySegment device, String mslSource, String functionName, String label) {
+        if (compileComputePipeline == null) {
+            throw new UnsupportedOperationException("Compute pipelines are not supported on this platform");
+        }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment src = allocateUtf8String(arena, mslSource);
             MemorySegment name = allocateUtf8String(arena, functionName);
