@@ -59,7 +59,7 @@ public final class IrisMetalDevice {
         if (!IrisMetalNativeBridge.isAvailable()) {
             throw new IllegalStateException("Iris Metal backend is not available on this platform");
         }
-        this.device = IrisMetalNativeBridge.createSystemDefaultDevice();
+        this.device = IrisMetalNativeBridge.getSystemDefaultDevice();
         if (IrisMetalNativeBridge.isNullHandle(device)) {
             throw new IllegalStateException("Failed to create system default Metal device");
         }

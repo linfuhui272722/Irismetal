@@ -3,6 +3,7 @@ package net.irisshaders.iris.metal.texture;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.irisshaders.iris.gl.texture.InternalTextureFormat;
+import net.irisshaders.iris.metal.IrisMetalDevice;
 import net.irisshaders.iris.metal.bridge.IrisMetalNativeBridge;
 import org.jspecify.annotations.Nullable;
 
