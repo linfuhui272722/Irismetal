@@ -49,79 +49,108 @@ public class IrisRenderSystem {
          * 安全地检查是否使用 Metal 后端。
          * 这个方法可以安全地在任何时候调用，包括 static 初始化期间。
          * Public 以便其他包的类（如 SamplerLimits）可以访问。
+         * 
+         * 注意：这个方法不依赖任何 Iris 类，只使用标准 Java API。
          */
         public static boolean isUsingMetalBackend() {
                 if (metalModeChecked) {
                         return isUsingMetal;
                 }
                 
+                // 首先检查系统属性（最可靠的方法）
                 try {
-                        // 方法1: 尝试反射获取 usingMetal 字段
-                        Class<?> mixinPluginClass = Class.forName("net.irisshaders.iris.mixin.IrisMixinPlugin");
-                        java.lang.reflect.Field usingMetalField = mixinPluginClass.getDeclaredField("usingMetal");
-                        usingMetalField.setAccessible(true);
-                        boolean reflectedUsingMetal = usingMetalField.getBoolean(null);
-                        
-                        if (reflectedUsingMetal) {
-                                // 如果反射获取到 true，直接返回
-                                isUsingMetal = true;
-                                metalModeChecked = true;
-                                return true;
+                        String backend = System.getProperty("preferredGraphicsBackend", "");
+                        if (backend.isEmpty()) {
+                                backend = System.getenv("MINECRAFT_GRAPHICS_BACKEND");
                         }
-                        
-                        // 方法2: 反射获取为 false，尝试直接读取 options.txt
-                        // 这是必要的，因为在类加载早期 usingMetal 可能还没被正确设置
-                        try {
-                                Class<?> platformHelpersClass = Class.forName("net.irisshaders.iris.IrisPlatformHelpers");
-                                java.lang.reflect.Method getInstanceMethod = platformHelpersClass.getDeclaredMethod("getInstance");
-                                Object platformHelpers = getInstanceMethod.invoke(null);
-                                java.lang.reflect.Method getGameDirMethod = platformHelpersClass.getDeclaredMethod("getGameDir");
-                                Object gameDir = getGameDirMethod.invoke(platformHelpers);
-                                
-                                java.nio.file.Path optionsPath = ((java.nio.file.Path) gameDir).resolve("options.txt");
-                                if (java.nio.file.Files.exists(optionsPath)) {
-                                        String content = new String(java.nio.file.Files.readAllBytes(optionsPath));
-                                        if (content.contains("preferredGraphicsBackend:metal") || 
-                                            content.contains("preferredGraphicsBackend:Metal") ||
-                                            content.contains("preferredGraphicsBackend:default") ||
-                                            content.contains("preferredGraphicsBackend:Default")) {
-                                                isUsingMetal = true;
-                                                metalModeChecked = true;
-                                                return true;
-                                        }
-                                }
-                        } catch (Throwable ignored) {
-                                // 无法读取 options.txt，继续
+                        if (backend.isEmpty()) {
+                                backend = System.getenv("GRAPHICS_BACKEND");
                         }
-                        
-                        // 方法3: 检查系统属性或环境变量
-                        String preferredBackend = System.getProperty("iris.preferredGraphicsBackend", "");
-                        if (preferredBackend.toLowerCase().contains("metal") || preferredBackend.equalsIgnoreCase("default")) {
-                                isUsingMetal = true;
-                                metalModeChecked = true;
-                                return true;
-                        }
-                        
-                        // 所有方法都返回 false
-                        isUsingMetal = false;
-                        metalModeChecked = true;
-                        return false;
-                        
-                } catch (Throwable e) {
-                        // 如果反射失败，尝试备用方法
-                        try {
-                                String preferredBackend = System.getProperty("iris.preferredGraphicsBackend", "");
-                                if (preferredBackend.toLowerCase().contains("metal") || preferredBackend.equalsIgnoreCase("default")) {
+                        if (!backend.isEmpty()) {
+                                String lower = backend.toLowerCase(java.util.Locale.ROOT);
+                                if (lower.contains("metal") || lower.equals("default")) {
                                         isUsingMetal = true;
                                         metalModeChecked = true;
                                         return true;
                                 }
-                        } catch (Throwable ignored) {}
+                        }
+                } catch (Throwable ignored) {}
+                
+                // 尝试直接读取 options.txt 文件
+                // 这是最可靠的方法，因为不依赖任何类加载
+                try {
+                        // 尝试常见路径
+                        String[] possiblePaths = {
+                                "options.txt",
+                                "./options.txt",
+                                "../options.txt",
+                                System.getProperty("user.dir") + "/options.txt"
+                        };
                         
-                        isUsingMetal = false;
+                        for (String pathStr : possiblePaths) {
+                                try {
+                                        java.nio.file.Path path = java.nio.file.Paths.get(pathStr);
+                                        if (java.nio.file.Files.exists(path) && java.nio.file.Files.isReadable(path)) {
+                                                String content = new String(java.nio.file.Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
+                                                if (checkBackendInContent(content)) {
+                                                        isUsingMetal = true;
+                                                        metalModeChecked = true;
+                                                        return true;
+                                                }
+                                        }
+                                } catch (Throwable ignored) {}
+                        }
+                        
+                        // 尝试通过工作目录
+                        java.nio.file.Path workingDir = java.nio.file.Paths.get(System.getProperty("user.dir"));
+                        java.nio.file.Path optionsPath = workingDir.resolve("options.txt");
+                        if (java.nio.file.Files.exists(optionsPath) && java.nio.file.Files.isReadable(optionsPath)) {
+                                String content = new String(java.nio.file.Files.readAllBytes(optionsPath), java.nio.charset.StandardCharsets.UTF_8);
+                                if (checkBackendInContent(content)) {
+                                        isUsingMetal = true;
+                                        metalModeChecked = true;
+                                        return true;
+                                }
+                        }
+                        
+                } catch (Throwable ignored) {}
+                
+                // 最后尝试反射获取 IrisMixinPlugin 的值（作为后备）
+                try {
+                        Class<?> mixinPluginClass = Class.forName("net.irisshaders.iris.mixin.IrisMixinPlugin");
+                        java.lang.reflect.Field usingMetalField = mixinPluginClass.getDeclaredField("usingMetal");
+                        usingMetalField.setAccessible(true);
+                        isUsingMetal = usingMetalField.getBoolean(null);
                         metalModeChecked = true;
-                        return false;
+                        return isUsingMetal;
+                } catch (Throwable e) {
+                        // 无法获取，返回 false
                 }
+                
+                isUsingMetal = false;
+                metalModeChecked = true;
+                return false;
+        }
+        
+        /**
+         * 检查内容中是否包含 Metal backend 设置。
+         */
+        private static boolean checkBackendInContent(String content) {
+                if (content == null) return false;
+                String lower = content.toLowerCase(java.util.Locale.ROOT);
+                // 检查 preferredGraphicsBackend 选项
+                int idx = lower.indexOf("preferredgraphicsbackend:");
+                if (idx >= 0) {
+                        String after = content.substring(idx + "preferredgraphicsbackend:".length());
+                        int endIdx = after.indexOf('\n');
+                        if (endIdx < 0) endIdx = after.indexOf('\r');
+                        if (endIdx < 0) endIdx = after.length();
+                        String value = after.substring(0, endIdx).trim().toLowerCase(java.util.Locale.ROOT);
+                        if (value.contains("metal") || value.equals("default")) {
+                                return true;
+                        }
+                }
+                return false;
         }
 
         private static final int[] emptyArray = new int[SamplerLimits.get().getMaxTextureUnits()];
