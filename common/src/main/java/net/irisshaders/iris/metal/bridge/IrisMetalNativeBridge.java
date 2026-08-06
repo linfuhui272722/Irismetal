@@ -39,7 +39,8 @@ import java.nio.file.StandardCopyOption;
  */
 @Environment(EnvType.CLIENT)
 public final class IrisMetalNativeBridge {
-    private static final String RESOURCE_PATH = "/natives/macos/libiris_metal.dylib";
+    private static final String MACOS_RESOURCE_PATH = "/natives/macos/libiris_metal.dylib";
+    private static final String IOS_RESOURCE_PATH = "/natives/ios/libiris_metal.dylib";
     private static final ValueLayout.OfInt INT = ValueLayout.JAVA_INT;
     private static final ValueLayout.OfLong LONG = ValueLayout.JAVA_LONG;
     private static final ValueLayout.OfFloat FLOAT = ValueLayout.JAVA_FLOAT;
@@ -48,6 +49,40 @@ public final class IrisMetalNativeBridge {
 
     private static volatile boolean initialized = false;
     private static volatile boolean available = false;
+
+    /**
+     * 检测是否运行在 iOS 环境下。
+     */
+    private static boolean isIOS() {
+        String osName = System.getProperty("os.name", "").toLowerCase();
+        String osArch = System.getProperty("os.arch", "").toLowerCase();
+        
+        // PojavLauncher / Amethyst on iOS
+        if (System.getProperty("pojav.launcher") != null
+                || System.getProperty("org.pojavlauncher") != null) {
+            return true;
+        }
+        
+        // iOS 上 java.io.tmpdir 和 user.home 总是在 /private/var/mobile/Containers/Data/Application/ 下
+        String tmpDir = System.getProperty("java.io.tmpdir", "");
+        String userHome = System.getProperty("user.home", "");
+        if (tmpDir.contains("/var/mobile/") || tmpDir.contains("/var/containers/")
+                || userHome.contains("/var/mobile/") || userHome.contains("/var/containers/")) {
+            return true;
+        }
+        
+        // Fallback: Darwin + aarch64 without a "Mac" os.name
+        return osName.contains("darwin")
+                && osArch.contains("aarch64")
+                && !osName.contains("mac");
+    }
+    
+    /**
+     * 获取正确的资源路径。
+     */
+    private static String getResourcePath() {
+        return isIOS() ? IOS_RESOURCE_PATH : MACOS_RESOURCE_PATH;
+    }
 
     // ===== 设备与命令队列 =====
     private static MethodHandle createSystemDefaultDevice;
@@ -129,7 +164,7 @@ public final class IrisMetalNativeBridge {
     }
 
     /**
-     * 加载原生库并解析所有符号。仅在 macOS 上可成功。
+     * 加载原生库并解析所有符号。仅在 macOS/iOS 上可成功。
      *
      * <p>本方法线程安全，可被多次调用。</p>
      */
@@ -140,26 +175,49 @@ public final class IrisMetalNativeBridge {
         initialized = true;
 
         String osName = System.getProperty("os.name", "").toLowerCase();
-        if (!osName.contains("mac")) {
-            Iris.logger.warn("Iris Metal backend requires macOS, current OS: {}. Metal backend disabled.", osName);
+        boolean isIOS = isIOS();
+        
+        if (!osName.contains("mac") && !osName.contains("darwin") && !isIOS) {
+            Iris.logger.warn("Iris Metal backend requires macOS/iOS, current OS: {}. Metal backend disabled.", osName);
             available = false;
             return;
         }
 
         try {
+            String resourcePath = getResourcePath();
             Path tempLib = Files.createTempFile("iris-metal-native-", ".dylib");
             tempLib.toFile().deleteOnExit();
-            try (InputStream stream = IrisMetalNativeBridge.class.getResourceAsStream(RESOURCE_PATH)) {
+            
+            try (InputStream stream = IrisMetalNativeBridge.class.getResourceAsStream(resourcePath)) {
                 if (stream == null) {
-                    throw new IllegalStateException("Missing native library resource: " + RESOURCE_PATH);
+                    // 尝试备用的资源路径
+                    String[] fallbackPaths = isIOS 
+                        ? new String[]{"/natives/ios/libmetallum.dylib", "/natives/macos/libmetallum.dylib"}
+                        : new String[]{"/natives/macos/libmetallum.dylib"};
+                    
+                    for (String fallback : fallbackPaths) {
+                        try (InputStream fallbackStream = IrisMetalNativeBridge.class.getResourceAsStream(fallback)) {
+                            if (fallbackStream != null) {
+                                Iris.logger.info("Using fallback native library: {}", fallback);
+                                Files.copy(fallbackStream, tempLib, StandardCopyOption.REPLACE_EXISTING);
+                                resourcePath = fallback;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (Files.size(tempLib) == 0) {
+                        throw new IllegalStateException("Missing native library resource: " + resourcePath);
+                    }
+                } else {
+                    Files.copy(stream, tempLib, StandardCopyOption.REPLACE_EXISTING);
                 }
-                Files.copy(stream, tempLib, StandardCopyOption.REPLACE_EXISTING);
             }
 
             SymbolLookup lookup = SymbolLookup.libraryLookup(tempLib, Arena.global());
             resolveAll(lookup);
             available = true;
-            Iris.logger.info("Iris Metal native bridge loaded successfully.");
+            Iris.logger.info("Iris Metal native bridge loaded successfully from: {}", resourcePath);
         } catch (Throwable t) {
             Iris.logger.error("Failed to load Iris Metal native bridge, Metal backend disabled", t);
             available = false;

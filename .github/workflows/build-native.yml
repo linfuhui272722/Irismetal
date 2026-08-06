@@ -1,0 +1,84 @@
+name: Build Metal Native Library
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/main/native/**'
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+      
+      - name: Build macOS native library
+        run: |
+          cd src/main/native
+          chmod +x build.sh
+          ./build.sh
+      
+      - name: Upload macOS native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: libiris_metal-macos
+          path: src/main/resources/natives/macos/libiris_metal.dylib
+          retention-days: 30
+
+  build-ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+      
+      - name: Build iOS native library
+        run: |
+          cd src/main/native
+          chmod +x build.sh
+          ./build.sh
+      
+      - name: Upload iOS native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: libiris_metal-ios
+          path: src/main/resources/natives/ios/libiris_metal.dylib
+          retention-days: 30
+
+  create-release:
+    needs: [build-macos, build-ios]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: libiris_metal-macos
+          path: natives/macos
+      
+      - name: Download iOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: libiris_metal-ios
+          path: natives/ios
+      
+      - name: Upload native libraries to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            natives/macos/libiris_metal.dylib
+            natives/ios/libiris_metal.dylib
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
