@@ -503,12 +503,23 @@ public final class IrisMetalNativeBridge {
     }
 
     // ===== 设备与命令队列 =====
+    // 缓存系统默认设备，避免重复创建
+    private static volatile MemorySegment cachedDevice = MemorySegment.NULL;
+    
     public static MemorySegment getSystemDefaultDevice() {
-        try {
-            return (MemorySegment) createSystemDefaultDevice.invoke();
-        } catch (Throwable t) {
-            throw new RuntimeException("Failed to get system default Metal device", t);
+        if (!isNullHandle(cachedDevice)) {
+            return cachedDevice;
         }
+        synchronized (IrisMetalNativeBridge.class) {
+            if (isNullHandle(cachedDevice)) {
+                try {
+                    cachedDevice = (MemorySegment) createSystemDefaultDevice.invoke();
+                } catch (Throwable t) {
+                    throw new RuntimeException("Failed to get system default Metal device", t);
+                }
+            }
+        }
+        return cachedDevice;
     }
 
     public static String copyDeviceName(MemorySegment device) {
