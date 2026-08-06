@@ -49,8 +49,17 @@ public class StandardMacros {
 		define(standardDefines, "MC_VERSION", getMcVersion());
 		define(standardDefines, "MC_MIPMAP_LEVEL", String.valueOf(Minecraft.getInstance().options.mipmapLevels().get()));
 		define(standardDefines, "IRIS_VERSION", getFormattedIrisVersion());
-		define(standardDefines, "MC_GL_VERSION", getGlVersion(GL20C.GL_VERSION));
-		define(standardDefines, "MC_GLSL_VERSION", getGlVersion(GL20C.GL_SHADING_LANGUAGE_VERSION));
+
+		// In Metal backend mode, skip OpenGL version queries as there is no GL context
+		if (IrisRenderSystem.isUsingMetalBackend()) {
+			// Use default values for Metal backend
+			define(standardDefines, "MC_GL_VERSION", "4.5");
+			define(standardDefines, "MC_GLSL_VERSION", "450");
+		} else {
+			define(standardDefines, "MC_GL_VERSION", getGlVersion(GL20C.GL_VERSION));
+			define(standardDefines, "MC_GLSL_VERSION", getGlVersion(GL20C.GL_SHADING_LANGUAGE_VERSION));
+		}
+
 		define(standardDefines, getOsString());
 		define(standardDefines, getVendor());
 		define(standardDefines, getRenderer());
