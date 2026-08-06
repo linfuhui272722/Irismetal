@@ -217,74 +217,65 @@ public final class MetalShaderCompiler {
             Iris.logger.info("[Iris-Metal] Upgraded shader from #version 330 to #version 450");
         }
 
-        // Vulkan GLSL 要求所有 uniform 必须在 block 中
-        // 将所有顶层 uniform 移动到 iris_VertexTransforms block
+        // Vulkan GLSL 要求所有 non-opaque uniform 必须在 uniform block 中或声明为 buffer
+        // 最简单的修复：将每个顶层 uniform 放入自己的 block
         
-        // 首先检查是否已经存在 VertexTransforms block
-        boolean hasVertexTransformsBlock = result.contains("iris_VertexTransforms");
-        if (hasVertexTransformsBlock) {
-            Iris.logger.info("[Iris-Metal] Shader already has VertexTransforms block, skipping uniform conversion");
-        } else {
-            // 收集所有不在 block 中的 uniform
-            List<String> topLevelUniforms = new ArrayList<>();
-            String[] lines = result.split("\n");
-            StringBuilder newSource = new StringBuilder();
-            int braceDepth = 0;
+        String[] lines = result.split("\n");
+        StringBuilder newSource = new StringBuilder();
+        int braceDepth = 0;
+        
+        // Opaque uniform 类型（sampler、image 等）- 保留原样（可能需要 binding）
+        String[] opaqueTypes = {"sampler", "image", "sampler1D", "sampler2D", "sampler3D", 
+            "samplerCube", "sampler2DShadow", "sampler2DArray", "isampler", "usampler", 
+            "texture1D", "texture2D", "texture3D", "textureCube", "image1D", "image2D"};
+        
+        for (String line : lines) {
+            // 计算 brace depth
+            for (char c : line.toCharArray()) {
+                if (c == '{') braceDepth++;
+                if (c == '}') braceDepth--;
+            }
             
-            for (String line : lines) {
-                // 计算 brace depth
-                for (char c : line.toCharArray()) {
-                    if (c == '{') braceDepth++;
-                    if (c == '}') braceDepth--;
-                }
-                
-                // 检查是否是顶层 uniform
-                if (braceDepth == 0 && line.trim().startsWith("uniform ") && !line.trim().startsWith("uniform {")) {
-                    // 提取 uniform 类型和名称
-                    String trimmed = line.trim();
-                    if (trimmed.endsWith(";")) {
-                        trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
-                        String[] parts = trimmed.split("\\s+");
-                        if (parts.length >= 3) {
-                            String uniformType = parts[1];
-                            String uniformName = parts[2];
-                            topLevelUniforms.add(uniformType + " " + uniformName);
-                            Iris.logger.info("[Iris-Metal] Moving top-level uniform: {} {}", uniformType, uniformName);
-                            continue; // 跳过这行
+            // 检查是否是顶层 uniform
+            if (braceDepth == 0 && line.trim().startsWith("uniform ") && !line.trim().startsWith("uniform {")) {
+                String trimmed = line.trim();
+                if (trimmed.endsWith(";")) {
+                    String uniformLine = trimmed.substring(0, trimmed.length() - 1).trim();
+                    String[] parts = uniformLine.split("\\s+");
+                    if (parts.length >= 3) {
+                        String uniformType = parts[1];
+                        String uniformName = parts[2];
+                        
+                        // 检查是否是 opaque 类型
+                        boolean isOpaque = false;
+                        for (String opaqueType : opaqueTypes) {
+                            if (uniformType.equals(opaqueType) || uniformType.startsWith(opaqueType)) {
+                                isOpaque = true;
+                                break;
+                            }
                         }
+                        
+                        if (isOpaque) {
+                            // Opaque uniform - 保留原样，可能需要处理 binding
+                            Iris.logger.info("[Iris-Metal] Keeping opaque uniform: {}", line.trim());
+                            newSource.append(line).append("\n");
+                        } else {
+                            // Non-opaque uniform - 放入 block
+                            // 使用唯一的 block 名称
+                            String blockName = "iris_" + uniformName + "_block";
+                            String newLine = "layout(std140) uniform " + blockName + " {\n    " + uniformType + " " + uniformName + ";\n} " + blockName + ";";
+                            Iris.logger.info("[Iris-Metal] Wrapping uniform in block: {} -> {}", line.trim(), newLine);
+                            newSource.append(newLine).append("\n");
+                        }
+                        continue;
                     }
                 }
-                
-                newSource.append(line).append("\n");
             }
             
-            // 如果有需要移动的 uniform，添加 block
-            if (!topLevelUniforms.isEmpty()) {
-                StringBuilder block = new StringBuilder();
-                block.append("\nlayout(std140) uniform iris_VertexTransforms {\n");
-                for (String uniform : topLevelUniforms) {
-                    block.append("    ").append(uniform).append(";\n");
-                }
-                block.append("} iris_VertexTransforms;\n\n");
-                
-                // 在第一个 uniform block 之前插入
-                String newSourceStr = newSource.toString();
-                int insertPos = newSourceStr.indexOf("layout(std140) uniform");
-                if (insertPos > 0) {
-                    result = newSourceStr.substring(0, insertPos) + block.toString() + newSourceStr.substring(insertPos);
-                } else {
-                    // 在 #version 之后插入
-                    int versionEnd = newSourceStr.indexOf("\n", newSourceStr.indexOf("#version"));
-                    if (versionEnd > 0) {
-                        result = newSourceStr.substring(0, versionEnd + 1) + block.toString() + newSourceStr.substring(versionEnd + 1);
-                    } else {
-                        result = block.toString() + newSourceStr;
-                    }
-                }
-            } else {
-                result = newSource.toString();
-            }
+            newSource.append(line).append("\n");
         }
+        
+        result = newSource.toString();
         
         // 打印转换后的 shader
         String shaderPreview = result.substring(0, Math.min(2000, result.length())).replace("\n", "\\n");
