@@ -56,6 +56,7 @@ import org.slf4j.LoggerFactory;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalInt;
 
 /**
@@ -427,9 +428,64 @@ public class IrisMetalRenderingPipeline implements WorldRenderingPipeline, Shade
     }
     
     private void compileFinalShader() {
-        // Final shader handling deferred
-        // In full implementation, final shader would be loaded from files
-        LOGGER.info("[Iris-Metal] Final shader handling deferred");
+        LOGGER.info("[Iris-Metal] Compiling final shader...");
+        
+        // Get the final program source
+        Optional<ProgramSource> maybeFinal = programSet.get(ProgramId.Final);
+        if (maybeFinal.isEmpty() || maybeFinal.get().getVertexSource().isEmpty()) {
+            LOGGER.info("[Iris-Metal] No final shader in pack");
+            return;
+        }
+        
+        ProgramSource source = maybeFinal.get();
+        String passName = source.getName();
+        
+        try {
+            MetalVertexDescriptor vertexDesc = FULLSCREEN_VERTEX;
+            MetalBlendState blendState = createBlendState(source);
+            
+            int[] colorFormats = new int[8];
+            for (int i = 0; i < 8; i++) {
+                if (gbuffersColorTextures[i] != null) {
+                    colorFormats[i] = gbuffersColorTextures[i].mtlPixelFormat();
+                }
+            }
+            
+            // Transform shader sources using TransformPatcher
+            TextureStage stage = TextureStage.COMPOSITE_AND_FINAL;
+            Object2ObjectMap<Tri<String, net.irisshaders.iris.gl.texture.TextureType, TextureStage>, String> textureMap = 
+                programSet.getPackDirectives().getTextureMap();
+            Map<PatchShaderType, String> transformed = TransformPatcher.patchComposite(
+                passName,
+                source.getVertexSource().orElse(""),
+                null, // geometry
+                source.getFragmentSource().orElse(""),
+                stage,
+                textureMap
+            );
+            
+            String vertexSource = transformed.get(PatchShaderType.VERTEX);
+            String fragmentSource = transformed.get(PatchShaderType.FRAGMENT);
+            
+            // Create the final program
+            MetalCompiledProgram program = MetalCompiledProgram.create(
+                "final",
+                vertexSource,
+                fragmentSource,
+                null,
+                vertexDesc,
+                colorFormats,
+                0,
+                new MetalBlendState[]{blendState}
+            );
+            
+            finalProgram = program;
+            programs.put("final", program);
+            
+            LOGGER.info("[Iris-Metal] Final shader compiled successfully: {}", passName);
+        } catch (Exception e) {
+            LOGGER.warn("[Iris-Metal] Failed to compile final shader {}: {}", passName, e.getMessage());
+        }
     }
     
     private MetalBlendState createBlendState(ProgramSource source) {
@@ -543,11 +599,17 @@ public class IrisMetalRenderingPipeline implements WorldRenderingPipeline, Shade
         isRenderingWorld = false;
         phase = WorldRenderingPhase.NONE;
         
+        // 确保命令缓冲区存在
+        IrisMetalDevice.get().beginFrame();
+        
         // Render composite passes
         renderCompositePasses();
         
         // Render final pass
         renderFinalPass();
+        
+        // 提交命令缓冲区
+        IrisMetalDevice.get().endFrame();
     }
     
     private void renderCompositePasses() {

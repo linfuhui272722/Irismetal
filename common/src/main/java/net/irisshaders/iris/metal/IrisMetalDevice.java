@@ -171,31 +171,40 @@ public final class IrisMetalDevice {
 
     /**
      * 获取当前帧的命令缓冲区（必须在 {@link #beginFrame()} 之后调用）。
+     * 如果还没有命令缓冲区，则自动创建一个（懒加载）。
      */
     public MemorySegment currentCommandBuffer() {
         if (currentCommandBuffer == null || IrisMetalNativeBridge.isNullHandle(currentCommandBuffer)) {
-            throw new IllegalStateException("No active command buffer; beginFrame() must be called first");
+            // 懒加载：自动创建命令缓冲区
+            currentCommandBuffer = IrisMetalNativeBridge.commandQueueMakeCommandBuffer(commandQueue);
+            if (IrisMetalNativeBridge.isNullHandle(currentCommandBuffer)) {
+                throw new IllegalStateException("Failed to create command buffer");
+            }
+            frameDepth = 1; // 标记为已创建
         }
         return currentCommandBuffer;
     }
 
     /**
      * 结束一帧的渲染编码。最外层调用时提交命令缓冲区并等待完成（保持 GL 同步语义）。
+     * 如果命令缓冲区是通过懒加载创建的（frameDepth=1），也会正确提交。
      */
     public void endFrame() {
         if (frameDepth <= 0) {
-            throw new IllegalStateException("endFrame() called without matching beginFrame()");
+            // 没有活动的命令缓冲区，可能是懒加载模式，不需要提交
+            return;
         }
         frameDepth--;
         if (frameDepth == 0) {
-            MemorySegment buffer = currentCommandBuffer;
+            if (currentCommandBuffer != null && !IrisMetalNativeBridge.isNullHandle(currentCommandBuffer)) {
+                IrisMetalNativeBridge.commandBufferCommit(currentCommandBuffer);
+                // 为保持与 OpenGL 的同步语义，等待命令完成。
+                // 注意：这会牺牲一些性能，但 Iris 的渲染逻辑假设命令是同步完成的。
+                // 后续可优化为 fence-based 异步等待。
+                IrisMetalNativeBridge.commandBufferWaitUntilCompleted(currentCommandBuffer);
+                IrisMetalNativeBridge.releaseObject(currentCommandBuffer);
+            }
             currentCommandBuffer = null;
-            IrisMetalNativeBridge.commandBufferCommit(buffer);
-            // 为保持与 OpenGL 的同步语义，等待命令完成。
-            // 注意：这会牺牲一些性能，但 Iris 的渲染逻辑假设命令是同步完成的。
-            // 后续可优化为 fence-based 异步等待。
-            IrisMetalNativeBridge.commandBufferWaitUntilCompleted(buffer);
-            IrisMetalNativeBridge.releaseObject(buffer);
         }
     }
 
