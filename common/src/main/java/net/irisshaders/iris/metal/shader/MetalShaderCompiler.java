@@ -258,12 +258,13 @@ public final class MetalShaderCompiler {
         if (!topLevelUniforms.isEmpty()) {
             // 先构建 block 定义（只包含变量名，不包含任何前缀）
             // 注意：Vulkan GLSL 要求 uniform block 必须有实例名
+            // 使用 MetallumIrisUniforms 作为 block 名（参考 metallum 的命名）
             StringBuilder block = new StringBuilder();
-            block.append("layout(std140) uniform iris_VertexUniforms {\n");
+            block.append("layout(std140) uniform MetallumIrisUniforms {\n");
             for (String uniform : topLevelUniforms) {
                 block.append("    ").append(uniform).append(";\n");
             }
-            block.append("} iris_VertexUniforms;\n\n");  // 实例名与 block 名相同
+            block.append("} MetallumIrisUniforms;\n\n");  // 实例名与 block 名相同
             
             // 在 shader body 中第一个 uniform block 之前插入，或者在 #version 之后
             String body = shaderBody.toString();
@@ -291,7 +292,7 @@ public final class MetalShaderCompiler {
             for (String uniform : topLevelUniforms) {
                 String[] parts = uniform.split("\\s+");
                 String uniformName = parts[1];
-                String fullRef = "iris_VertexUniforms." + uniformName;
+                String fullRef = "MetallumIrisUniforms." + uniformName;
                 
                 // 替换：在 block 定义之后的所有出现
                 int blockEndPos = insertPos > 0 ? insertPos + blockDef.length() : blockDef.length();
@@ -303,10 +304,10 @@ public final class MetalShaderCompiler {
                 
                 result = beforeBlock + afterBlock;
                 
-                // 清理可能产生的双重前缀（如 iris_VertexUniforms.iris_VertexUniforms.xxx）
-                result = result.replaceAll("iris_VertexUniforms\\.iris_VertexUniforms\\.", "iris_VertexUniforms.");
+                // 清理可能产生的双重前缀
+                result = result.replaceAll("MetallumIrisUniforms\\.MetallumIrisUniforms\\.", "MetallumIrisUniforms.");
                 
-                Iris.logger.info("[Iris-Metal] Replacing {} -> iris_VertexUniforms.{}", uniformName, uniformName);
+                Iris.logger.info("[Iris-Metal] Replacing {} -> MetallumIrisUniforms.{}", uniformName, uniformName);
             }
         } else {
             result = shaderBody.toString();
