@@ -73,15 +73,14 @@ public final class MetalTexture implements AutoCloseable {
         this.type = type;
 
         // MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite | MTLTextureUsageRenderTarget
-        // iOS Metal 只支持有限的 usage 值
-        int usage = 0x1; // 只使用 ShaderRead，避免 renderTarget 问题
+        // 使用完整的 usage 值
+        long usage = 0x1L | 0x2L | 0x4L; // ShaderRead | ShaderWrite | RenderTarget
         // MTLStorageModePrivate - GPU 私有内存
-        int storageMode = 0; // Private
+        long storageMode = 0L; // Private
 
         switch (type) {
             case TEXTURE_2D:
                 // cubeCompatible=0 means regular 2D texture, not a cube
-                // Note: metallum_create_texture_2d 内部获取设备，不需要传入 device
                 this.handle = IrisMetalNativeBridge.createTexture2D(mtlPixelFormat,
                         width, height, 1, mipLevels, 0, usage, storageMode, label);
                 break;
