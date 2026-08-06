@@ -7,9 +7,8 @@ import net.irisshaders.iris.gl.shader.ShaderType;
 import net.irisshaders.iris.metal.bridge.IrisMetalNativeBridge;
 import org.jspecify.annotations.Nullable;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.lang.foreign.MemorySegment;
+import org.lwjgl.util.shaderc.Shaderc;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -124,93 +123,80 @@ public final class MetalShaderCompiler {
     /**
      * 将 GLSL 编译为 SPIR-V。
      *
-     * <p>使用 MC 26.2 的 {@code GlslCompiler}。该类位于
-     * {@code com.mojang.blaze3d.vulkan.glsl} 包，是 Mojang 为 Vulkan 后端引入的
-     * GLSL→SPIRV 编译器，内部使用 glslang。</p>
-     *
-     * <p>注意：{@code GlslCompiler} 期望的 GLSL 是 Vulkan 风格的（{@code #version 450}、
-     * 无 {@code gl_FragColor} 等）。Iris 的 transformer 层（{@code LayoutTransformer} 等）
-     * 已经将 GLSL 转换为兼容形式。如果未转换，本方法会先做基本适配。</p>
+     * <p>使用 LWJGL 的 shaderc 库编译 GLSL 到 SPIR-V，与 metallum 一致。</p>
      */
     private static byte[] compileGlslToSpirv(String name, ShaderType type, String glslSource) throws Exception {
-        // 适配 GLSL 为 Vulkan 风格（如果 Iris transformer 未完全处理）
+        // 适配 GLSL 为 Vulkan 风格
         String vulkanGlsl = adaptGlslForVulkan(glslSource, type);
 
-        // 使用反射调用 MC 的 GlslCompiler（避免硬编译依赖）
-        // 正确的方法签名：GlslCompiler.createIntermediary(String filename, String source, ShaderType type)
-        // 这与 metallum 使用的方式一致
-        Class<?> glslCompilerClass = Class.forName("com.mojang.blaze3d.vulkan.glsl.GlslCompiler");
-        Class<?> shaderTypeClass = Class.forName("com.mojang.blaze3d.shaders.ShaderType");
-        Class<?> intermediaryClass = Class.forName("com.mojang.blaze3d.vulkan.glsl.IntermediaryShaderModule");
+        // 获取 shaderc 的 shader kind
+        int shadercKind = getShadercKind(type);
 
-        Object mcShaderType = mapShaderTypeToMc(shaderTypeClass, type);
+        // 初始化 shaderc
+        long compiler = Shaderc.shaderc_compiler_initialize();
+        if (compiler == 0) {
+            throw new Exception("Failed to initialize shaderc compiler for " + name);
+        }
 
-        // 使用 createIntermediary 方法，与 metallum 一致
-        java.lang.reflect.Constructor<?> glslCompilerConstructor = glslCompilerClass.getDeclaredConstructor();
-        glslCompilerConstructor.setAccessible(true);
-        Object glslCompiler = glslCompilerConstructor.newInstance();
+        long options = Shaderc.shaderc_compile_options_initialize();
+        if (options == 0) {
+            Shaderc.shaderc_compiler_release(compiler);
+            throw new Exception("Failed to initialize shaderc options for " + name);
+        }
 
-        // 调用 createIntermediary(filename, source, type)
-        java.lang.reflect.Method createIntermediary = glslCompilerClass.getMethod(
-            "createIntermediary", String.class, String.class, shaderTypeClass);
-        
-        Object intermediary;
         try {
-            intermediary = createIntermediary.invoke(glslCompiler, name + ".glsl", vulkanGlsl, mcShaderType);
-        } catch (java.lang.reflect.InvocationTargetException e) {
-            Throwable cause = e.getCause();
-            Iris.logger.error("GlslCompiler.createIntermediary failed for {}: {}", name, cause != null ? cause.getMessage() : "null");
-            if (cause != null) {
-                Iris.logger.error("Exception type: {}", cause.getClass().getName());
+            // 设置目标环境为 Vulkan
+            Shaderc.shaderc_compile_options_set_target_env(
+                options, Shaderc.shaderc_target_env_vulkan, Shaderc.shaderc_env_version_vulkan_1_2
+            );
+            
+            // 自动绑定 uniforms 和映射位置
+            Shaderc.shaderc_compile_options_set_auto_bind_uniforms(options, true);
+            Shaderc.shaderc_compile_options_set_auto_map_locations(options, true);
+
+            // 编译 GLSL 到 SPIR-V
+            long result = Shaderc.shaderc_compile_into_spv(
+                compiler, vulkanGlsl, shadercKind, name, "main", options
+            );
+
+            try {
+                int status = Shaderc.shaderc_result_get_compilation_status(result);
+                if (status != Shaderc.shaderc_compilation_status_success) {
+                    String errorMessage = Shaderc.shaderc_result_get_error_message(result);
+                    Iris.logger.error("Shader compilation failed for {}: {}", name, errorMessage);
+                    throw new Exception("Shaderc compilation failed for " + name + ": " + errorMessage);
+                }
+
+                ByteBuffer bytes = Shaderc.shaderc_result_get_bytes(result);
+                if (bytes == null || bytes.remaining() < 20) {
+                    throw new Exception("Shaderc produced empty SPIR-V for " + name);
+                }
+
+                byte[] spirv = new byte[bytes.remaining()];
+                bytes.get(spirv);
+                return spirv;
+            } finally {
+                Shaderc.shaderc_result_release(result);
             }
-            throw new Exception("GlslCompiler.createIntermediary failed", cause);
+        } finally {
+            Shaderc.shaderc_compile_options_release(options);
+            Shaderc.shaderc_compiler_release(compiler);
         }
-
-        if (intermediary == null) {
-            throw new Exception("GlslCompiler.createIntermediary returned null for " + name);
-        }
-
-        java.lang.reflect.Method getSpirvMethod = intermediaryClass.getMethod("getSpirv");
-        java.nio.ByteBuffer spirvBuffer;
-        try {
-            spirvBuffer = (java.nio.ByteBuffer) getSpirvMethod.invoke(intermediary);
-        } catch (java.lang.reflect.InvocationTargetException e) {
-            Throwable cause = e.getCause();
-            Iris.logger.error("GlslCompiler.getSpirv failed for {}: {}", name, cause != null ? cause.getMessage() : "null");
-            if (cause != null) {
-                Iris.logger.error("Exception type: {}", cause.getClass().getName());
-                // 打印完整的 stack trace
-                StringWriter sw = new StringWriter();
-                cause.printStackTrace(new PrintWriter(sw));
-                Iris.logger.error("Full stack trace:\n{}", sw.toString());
-            }
-            throw new Exception("GlslCompiler.getSpirv failed", cause);
-        }
-
-        if (spirvBuffer == null || !spirvBuffer.hasRemaining()) {
-            throw new Exception("GlslCompiler.getSpirv returned null or empty buffer for " + name);
-        }
-
-        byte[] spirv = new byte[spirvBuffer.remaining()];
-        spirvBuffer.get(spirv);
-
-        // 释放 intermediary shader module
-        try {
-            java.lang.reflect.Method closeMethod = intermediaryClass.getMethod("close");
-            closeMethod.invoke(intermediary);
-        } catch (Exception ignored) {
-        }
-
-        // 关闭 GlslCompiler
-        try {
-            java.lang.reflect.Method compilerCloseMethod = glslCompilerClass.getMethod("close");
-            compilerCloseMethod.invoke(glslCompiler);
-        } catch (Exception ignored) {
-        }
-
-        return spirv;
     }
 
+    /**
+     * 将 ShaderType 映射到 shaderc kind
+     */
+    private static int getShadercKind(ShaderType type) {
+        return switch (type) {
+            case VERTEX -> Shaderc.shaderc_glsl_vertex_shader;
+            case FRAGMENT -> Shaderc.shaderc_glsl_fragment_shader;
+            case GEOMETRY -> Shaderc.shaderc_glsl_geometry_shader;
+            case TESSELATION_CONTROL -> Shaderc.shaderc_glsl_tess_control_shader;
+            case TESSELATION_EVAL -> Shaderc.shaderc_glsl_tess_evaluation_shader;
+            case COMPUTE -> Shaderc.shaderc_glsl_compute_shader;
+        };
+    }
     /**
      * 将 GLSL 源码适配为 Vulkan 风格。
      *
@@ -361,42 +347,6 @@ public final class MetalShaderCompiler {
             index = lineEnd + 1;
         }
         return index;
-    }
-
-    /**
-     * 将 Iris ShaderType 映射为 MC 的 ShaderType 枚举值。
-     */
-    private static Object mapShaderTypeToMc(Class<?> shaderTypeClass, ShaderType type) throws Exception {
-        String enumName;
-        switch (type) {
-            case VERTEX:
-                enumName = "VERTEX";
-                break;
-            case FRAGMENT:
-                enumName = "FRAGMENT";
-                break;
-            case GEOMETRY:
-                enumName = "GEOMETRY";
-                break;
-            case TESSELATION_CONTROL:
-                enumName = "TESSELATION_CONTROL";
-                break;
-            case TESSELATION_EVAL:
-                enumName = "TESSELATION_EVAL";
-                break;
-            case COMPUTE:
-                enumName = "COMPUTE";
-                break;
-            default:
-                throw new IllegalArgumentException("Unsupported shader type: " + type);
-        }
-        Object[] constants = shaderTypeClass.getEnumConstants();
-        for (Object c : constants) {
-            if (c.toString().equals(enumName)) {
-                return c;
-            }
-        }
-        throw new IllegalStateException("MC ShaderType enum not found: " + enumName);
     }
 
     /**

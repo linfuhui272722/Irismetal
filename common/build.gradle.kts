@@ -71,6 +71,7 @@ dependencies {
 
     // LWJGL SPIRV-Cross binding for Metal shader compilation
     implementation("org.lwjgl:lwjgl-spvc:${rootProject.extra["LWJGL_VERSION"]}")
+    implementation("org.lwjgl:lwjgl-shaderc:${rootProject.extra["LWJGL_VERSION"]}")
 }
 
 afterEvaluate {
