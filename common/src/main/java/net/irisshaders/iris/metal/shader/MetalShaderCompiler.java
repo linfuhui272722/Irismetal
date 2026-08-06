@@ -208,8 +208,8 @@ public final class MetalShaderCompiler {
             case TESSELATION_CONTROL:
                 enumName = "TESSELATION_CONTROL";
                 break;
-            case TESSELATION_EVALUATION:
-                enumName = "TESSELATION_EVALUATION";
+            case TESSELATION_EVAL:
+                enumName = "TESSELATION_EVAL";
                 break;
             case COMPUTE:
                 enumName = "COMPUTE";
@@ -241,7 +241,7 @@ public final class MetalShaderCompiler {
                 return 2;
             case GEOMETRY:
             case TESSELATION_CONTROL:
-            case TESSELATION_EVALUATION:
+            case TESSELATION_EVAL:
                 // Metal 不直接支持 geometry/tessellation shader
                 // 需要用 mesh shader 或 post-tessellation vertex shader 模拟
                 // 本版本暂不支持，返回 -1 让 native 层报错

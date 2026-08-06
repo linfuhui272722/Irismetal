@@ -3,7 +3,6 @@ package net.irisshaders.iris.metal.texture;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.irisshaders.iris.gl.texture.InternalTextureFormat;
-import net.irisshaders.iris.gl.texture.TextureAccess;
 import net.irisshaders.iris.metal.IrisMetalDevice;
 import net.irisshaders.iris.metal.bridge.IrisMetalNativeBridge;
 import org.jspecify.annotations.Nullable;
@@ -35,7 +34,7 @@ import java.nio.ByteBuffer;
  * colortex 等），不经过 MC 的 {@code GpuTexture} 抽象，因此需要本类独立实现。</p>
  */
 @Environment(EnvType.CLIENT)
-public final class MetalTexture implements TextureAccess, AutoCloseable {
+public final class MetalTexture implements AutoCloseable {
     private final int textureId;
     private final MemorySegment handle;
     private final InternalTextureFormat internalFormat;
@@ -54,6 +53,12 @@ public final class MetalTexture implements TextureAccess, AutoCloseable {
         TEXTURE_2D,
         TEXTURE_3D,
         TEXTURE_CUBE
+    }
+
+    // 简化的构造函数
+    public MetalTexture(InternalTextureFormat internalFormat, int width, int height,
+                        int depth, int mipLevels) {
+        this(0, internalFormat, width, height, depth, mipLevels, Type.TEXTURE_2D, "IrisTexture");
     }
 
     public MetalTexture(int textureId, InternalTextureFormat internalFormat, int width, int height,
@@ -123,6 +128,19 @@ public final class MetalTexture implements TextureAccess, AutoCloseable {
         return depth;
     }
 
+    // 简短的访问器方法（供内部使用）
+    public int width() {
+        return width;
+    }
+
+    public int height() {
+        return height;
+    }
+
+    public int depth() {
+        return depth;
+    }
+
     public int getMipLevels() {
         return mipLevels;
     }
@@ -178,17 +196,14 @@ public final class MetalTexture implements TextureAccess, AutoCloseable {
         }
     }
 
-    @Override
     public int getGlId() {
         return textureId;
     }
 
-    @Override
     public int getInternalFormat() {
         return internalFormat.getGlFormat();
     }
 
-    @Override
     public void close() {
         if (!destroyed) {
             destroyed = true;

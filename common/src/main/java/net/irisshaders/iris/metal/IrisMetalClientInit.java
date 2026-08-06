@@ -16,8 +16,8 @@ public class IrisMetalClientInit implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         try {
-            boolean nativeLoaded = IrisMetalNativeBridge.ensureLoaded();
-            if (nativeLoaded) {
+            IrisMetalNativeBridge.ensureLoaded();
+            if (IrisMetalNativeBridge.isAvailable()) {
                 LOGGER.info("Iris Metal native library loaded successfully");
                 // 预初始化设备（获取系统默认 Metal 设备）
                 try {

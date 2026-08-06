@@ -79,6 +79,20 @@ public final class IrisMetalDevice {
     }
 
     /**
+     * @return 原生库是否可用（已加载且功能完整）。
+     */
+    public static boolean isAvailable() {
+        return IrisMetalNativeBridge.isAvailable();
+    }
+
+    /**
+     * 确保原生库已加载。
+     */
+    public static void ensureLoaded() {
+        IrisMetalNativeBridge.ensureLoaded();
+    }
+
+    /**
      * 尝试初始化 Metal 后端，失败返回 false（不抛异常）。用于在启动时探测。
      */
     public static boolean tryInitialize() {
@@ -96,6 +110,11 @@ public final class IrisMetalDevice {
     }
 
     public String deviceName() {
+        return deviceName;
+    }
+
+    // 别名方法
+    public String getDeviceName() {
         return deviceName;
     }
 

@@ -76,6 +76,11 @@ public final class MetalFramebuffer implements AutoCloseable {
         this.depthAttachment = texture;
     }
 
+    // setDepthAttachment的别名
+    public void setDepthAttachment(MetalTexture texture) {
+        addDepthAttachment(texture);
+    }
+
     public void addStencilAttachment(MetalTexture texture) {
         ensureNotDestroyed();
         this.stencilAttachment = texture;

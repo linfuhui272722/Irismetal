@@ -56,7 +56,7 @@ public final class MetalBuffer implements AutoCloseable {
         this.size = size;
         this.storageMode = storageMode;
         MemorySegment device = IrisMetalDevice.get().deviceHandle();
-        this.handle = IrisMetalNativeBridge.createBuffer(device, null, size,
+        this.handle = IrisMetalNativeBridge.createBuffer(device, size,
                 storageModeToResourceOptions(storageMode, cpuWrite));
     }
 
@@ -87,6 +87,18 @@ public final class MetalBuffer implements AutoCloseable {
             default:
                 return 0;
         }
+    }
+
+    /**
+     * 使用已有的 Metal buffer 句柄创建 MetalBuffer。
+     *
+     * @param handle Metal buffer 句柄
+     * @param size buffer 大小
+     */
+    public MetalBuffer(MemorySegment handle, long size) {
+        this.handle = handle;
+        this.size = size;
+        this.storageMode = STORAGE_SHARED; // 假设默认
     }
 
     public MemorySegment handle() {

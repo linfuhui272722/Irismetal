@@ -128,6 +128,26 @@ public final class MetalUniformBlock implements AutoCloseable {
     }
 
     /**
+     * 上传整个 uniform block 的数据。
+     *
+     * @param data 包含所有 uniform 值的数据
+     */
+    public void upload(ByteBuffer data) {
+        if (data == null || !data.hasArray()) {
+            return;
+        }
+        int oldPos = dataBuffer.position();
+        int oldLimit = dataBuffer.limit();
+        dataBuffer.clear();
+        data.rewind();
+        int len = Math.min(data.remaining(), totalSize);
+        dataBuffer.put(data.array(), data.arrayOffset(), len);
+        dataBuffer.position(oldPos);
+        dataBuffer.limit(oldLimit);
+        dirty = true;
+    }
+
+    /**
      * 将 uniform 数据绑定到 render encoder。
      *
      * @param encoder render pass encoder 句柄

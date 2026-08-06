@@ -2,6 +2,8 @@ package net.irisshaders.iris.metal.texture;
 
 import net.irisshaders.iris.gl.texture.InternalTextureFormat;
 import net.irisshaders.iris.gl.texture.PixelFormat;
+import org.lwjgl.opengl.GL11C;
+import org.lwjgl.opengl.GL30C;
 
 /**
  * GL 像素格式与 Metal {@code MTLPixelFormat} 的映射表。
@@ -55,7 +57,7 @@ public final class MetalPixelFormat {
     public static final int RGBA16Float = 115;
     public static final int RGBA32Float = 125;
     public static final int RG16Float = 105;
-    public static final int RG32Float = 115;
+    public static final int RG32Float = 106;  // 修复：原为115，与RGBA16Float冲突
     public static final int R16Float = 25;
     public static final int R32Float = 55;
     public static final int RG11B10Float = 22;
@@ -79,68 +81,68 @@ public final class MetalPixelFormat {
      * @throws IllegalArgumentException 如果格式不支持
      */
     public static int from(InternalTextureFormat format) {
-        switch (format) {
+        int glFormat = format.getGlFormat();
+        
+        // 根据GL常量值进行映射
+        switch (glFormat) {
             // 8 位
-            case RGBA8:
-            case RGBA8_SRGB:
+            case GL11C.GL_RGBA8:
                 return RGBA8Unorm;
-            case R8:
-                return RG8Unorm; // Metal 没有 R8Unorm 的独立常量值在此表中，用 RG8 近似
-            case RG8:
+            case GL30C.GL_R8:
+                return RG8Unorm;
+            case GL30C.GL_RG8:
                 return RG8Unorm;
             // 16 位归一化
-            case RGBA16:
+            case GL30C.GL_RGBA16:
                 return RGBA16Unorm;
-            case R16:
+            case GL30C.GL_R16:
                 return RGBA16Unorm; // 近似
-            case RG16:
+            case GL30C.GL_RG16:
                 return RGBA16Unorm; // 近似
             // 16 位浮点
-            case RGBA16F:
+            case GL30C.GL_RGBA16F:
                 return RGBA16Float;
-            case RG16F:
+            case GL30C.GL_RG16F:
                 return RG16Float;
-            case R16F:
+            case GL30C.GL_R16F:
                 return R16Float;
             // 32 位浮点
-            case RGBA32F:
+            case GL30C.GL_RGBA32F:
                 return RGBA32Float;
-            case RG32F:
+            case GL30C.GL_RG32F:
                 return RG32Float;
-            case R32F:
+            case GL30C.GL_R32F:
                 return R32Float;
             // 特殊浮点
-            case R11G11B10F:
+            case GL30C.GL_R11F_G11F_B10F:
                 return RG11B10Float;
-            case RGB9E5:
+            case GL30C.GL_RGB9_E5:
                 return RGB9E5Float;
             // 10 位
-            case RGB10_A2:
+            case GL11C.GL_RGB10_A2:
                 return BGR10A2;
             // 深度
-            case DEPTH_COMPONENT:
-            case DEPTH_COMPONENT16:
+            case GL30C.GL_DEPTH_COMPONENT16:
                 return Depth16Unorm;
-            case DEPTH_COMPONENT24:
-            case DEPTH_COMPONENT32:
-            case DEPTH_COMPONENT32F:
+            case GL30C.GL_DEPTH_COMPONENT24:
+            case GL30C.GL_DEPTH_COMPONENT32:
                 return Depth32Float;
             // 深度模板
-            case DEPTH_STENCIL:
-            case DEPTH24_STENCIL8:
+            case GL30C.GL_DEPTH24_STENCIL8:
+            case GL30C.GL_DEPTH32F_STENCIL8:
                 return Depth32Float_Stencil8;
             // 整数
-            case RGBA8UI:
+            case GL30C.GL_RGBA8UI:
                 return RGBA8Uint;
-            case RGBA16UI:
+            case GL30C.GL_RGBA16UI:
                 return RGBA16Uint;
-            case RGBA32UI:
+            case GL30C.GL_RGBA32UI:
                 return RGBA32Uint;
-            case RGBA8I:
+            case GL30C.GL_RGBA8I:
                 return RGBA8Sint;
-            case RGBA16I:
+            case GL30C.GL_RGBA16I:
                 return RGBA16Sint;
-            case RGBA32I:
+            case GL30C.GL_RGBA32I:
                 return RGBA32Sint;
             default:
                 throw new IllegalArgumentException("Unsupported internal texture format for Metal: " + format);

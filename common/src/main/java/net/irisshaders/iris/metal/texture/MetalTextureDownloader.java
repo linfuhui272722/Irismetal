@@ -38,12 +38,11 @@ final class MetalTextureDownloader {
             IrisMetalNativeBridge.blitCopyTextureToBuffer(
                     blitEncoder,
                     texture.handle(),
+                    readbackBuffer,
                     slice,
                     mipLevel,
                     0, 0, 0,
                     texture.width(), texture.height(), texture.depth(),
-                    readbackBuffer,
-                    0,
                     bytesPerRow,
                     bytesPerImage
             );

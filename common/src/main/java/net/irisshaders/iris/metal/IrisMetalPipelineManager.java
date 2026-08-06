@@ -134,8 +134,9 @@ public final class IrisMetalPipelineManager {
             old.close();
         }
         MetalFramebuffer fbo = new MetalFramebuffer();
+        int index = 0;
         for (MetalTexture tex : colorTextures) {
-            fbo.addColorAttachment(tex, 0, 0);
+            fbo.addColorAttachment(index++, tex, 0, 0);
         }
         if (depthTexture != null) {
             fbo.setDepthAttachment(depthTexture);
@@ -231,5 +232,13 @@ public final class IrisMetalPipelineManager {
 
     public boolean isInitialized() {
         return initialized;
+    }
+
+    /**
+     * 关闭管线管理器并释放所有资源。
+     * 等同于 {@link #destroy()}。
+     */
+    public void close() {
+        destroy();
     }
 }

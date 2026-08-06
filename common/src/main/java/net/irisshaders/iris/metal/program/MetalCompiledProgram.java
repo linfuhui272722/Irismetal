@@ -6,6 +6,8 @@ import net.irisshaders.iris.gl.shader.ShaderType;
 import net.irisshaders.iris.metal.IrisMetalDevice;
 import net.irisshaders.iris.metal.blending.MetalBlendState;
 import net.irisshaders.iris.metal.bridge.IrisMetalNativeBridge;
+import net.irisshaders.iris.metal.image.MetalProgramImages;
+import net.irisshaders.iris.metal.sampler.MetalProgramSamplers;
 import net.irisshaders.iris.metal.shader.MetalShaderCompiler;
 import net.irisshaders.iris.metal.uniform.MetalUniformBlock;
 import org.jspecify.annotations.Nullable;
@@ -209,6 +211,24 @@ public final class MetalCompiledProgram implements AutoCloseable {
 
     public String name() {
         return name;
+    }
+
+    // create方法的别名（IrisMetalPipelineManager使用）
+    public static MetalCompiledProgram create(String name,
+            @Nullable String vertexSource,
+            @Nullable String fragmentSource,
+            @Nullable String geometrySource,
+            MetalVertexDescriptor vertexDesc,
+            int[] colorFormats,
+            int depthFormat,
+            @Nullable MetalBlendState[] blendStates) {
+        // geometrySource被忽略（Metal不支持geometry shader）
+        // blendStates数组只使用第一个元素
+        MetalBlendState blend = (blendStates != null && blendStates.length > 0) ? blendStates[0] : null;
+        if (blend == null) {
+            blend = new MetalBlendState(false, 1, 0, 1, 0, 0, 0);
+        }
+        return build(name, vertexSource, fragmentSource, blend, colorFormats, depthFormat, vertexDesc);
     }
 
     public MemorySegment pipelineStateHandle() {

@@ -12,4 +12,12 @@ public class IrisLimits {
 
 
 	public static final boolean VK_CONFORMANCE = false;
+
+	/**
+	 * Returns the maximum number of texture units available.
+	 * Metal supports at least 16 texture units per shader stage.
+	 */
+	public static int getMaxTextureUnits() {
+		return 16;
+	}
 }

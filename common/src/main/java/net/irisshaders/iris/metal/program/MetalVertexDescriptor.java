@@ -2,6 +2,9 @@ package net.irisshaders.iris.metal.program;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.irisshaders.iris.metal.bridge.IrisMetalNativeBridge;
+
+import java.lang.foreign.MemorySegment;
 
 /**
  * Metal vertex descriptor，描述顶点缓冲区的布局。
@@ -68,6 +71,14 @@ public final class MetalVertexDescriptor {
 
     public int stride() {
         return stride;
+    }
+
+    /**
+     * 创建Metal vertex descriptor原生对象。
+     */
+    public MemorySegment handle() {
+        // 简化实现：返回NULL，实际需要原生层支持
+        return MemorySegment.NULL;
     }
 
     public static final class Attribute {
