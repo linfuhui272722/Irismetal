@@ -51,6 +51,9 @@ public final class IrisMetalNativeBridge {
 
     private static volatile boolean initialized = false;
     private static volatile boolean available = false;
+    
+    // 全局 Arena，用于分配需要长期持有的原生字符串内存
+    private static final Arena GLOBAL_STRING_ARENA = Arena.global();
 
     /**
      * 检测是否运行在 iOS 环境下。
@@ -481,9 +484,9 @@ public final class IrisMetalNativeBridge {
     }
 
     // 辅助方法：分配UTF-8字符串到内存段 (Java 22+兼容)
-    private static MemorySegment allocateUtf8String(Arena arena, String str) {
+    private static MemorySegment allocateUtf8String(String str) {
         byte[] bytes = str.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        MemorySegment segment = arena.allocate(bytes.length + 1);
+        MemorySegment segment = GLOBAL_STRING_ARENA.allocate(bytes.length + 1);
         segment.set(ValueLayout.JAVA_BYTE, 0, (byte) 0);  // null terminator
         for (int i = 0; i < bytes.length; i++) {
             segment.set(ValueLayout.JAVA_BYTE, i, bytes[i]);
@@ -579,7 +582,7 @@ public final class IrisMetalNativeBridge {
 
     public static void commandBufferPushDebugGroup(MemorySegment buffer, String name) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment nameSeg = allocateUtf8String(arena, name);
+            MemorySegment nameSeg = allocateUtf8String( name);
             commandBufferPushDebugGroup.invoke(buffer, nameSeg);
         } catch (Throwable t) {
             Iris.logger.debug("pushDebugGroup failed", t);
@@ -671,7 +674,7 @@ public final class IrisMetalNativeBridge {
                                                  long depthOrLayers, long mipLevels, long cubeCompatible,
                                                  int usage, int storageMode, String label) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment labelSeg = allocateUtf8String(arena, label);
+            MemorySegment labelSeg = allocateUtf8String( label);
             MemorySegment result = (MemorySegment) createTexture2D.invoke(pixelFormat, width, height, depthOrLayers, mipLevels, cubeCompatible, usage, storageMode, labelSeg);
             if (isNullHandle(result)) {
                 Iris.logger.warn("createTexture2D returned NULL for {} (format={}, {}x{}, mipLevels={})", 
@@ -691,7 +694,7 @@ public final class IrisMetalNativeBridge {
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment device = getSystemDefaultDevice();
-            MemorySegment labelSeg = allocateUtf8String(arena, label);
+            MemorySegment labelSeg = allocateUtf8String( label);
             // dimension=3 表示 3D 纹理
             return (MemorySegment) createTexture3D.invoke(device, pixelFormat, width, height, depth, mipLevels, 3, 0, usage, storageMode, labelSeg);
         } catch (Throwable t) {
@@ -706,7 +709,7 @@ public final class IrisMetalNativeBridge {
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment device = getSystemDefaultDevice();
-            MemorySegment labelSeg = allocateUtf8String(arena, label);
+            MemorySegment labelSeg = allocateUtf8String( label);
             // cubeCompatible=1 表示 cube 纹理, dimension=2 表示 2D
             return (MemorySegment) createTextureCube.invoke(device, pixelFormat, size, 1, mipLevels, 2, 1, usage, storageMode, labelSeg);
         } catch (Throwable t) {
@@ -795,11 +798,11 @@ public final class IrisMetalNativeBridge {
             throw new UnsupportedOperationException("Render pipeline compilation is not available on this platform");
         }
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment vSrc = allocateUtf8String(arena, vertexMslSource);
-            MemorySegment fSrc = allocateUtf8String(arena, fragmentMslSource);
-            MemorySegment vName = allocateUtf8String(arena, vertexFunctionName);
-            MemorySegment fName = allocateUtf8String(arena, fragmentFunctionName);
-            MemorySegment labelSeg = allocateUtf8String(arena, label);
+            MemorySegment vSrc = allocateUtf8String( vertexMslSource);
+            MemorySegment fSrc = allocateUtf8String( fragmentMslSource);
+            MemorySegment vName = allocateUtf8String( vertexFunctionName);
+            MemorySegment fName = allocateUtf8String( fragmentFunctionName);
+            MemorySegment labelSeg = allocateUtf8String( label);
             // 将 vName/fName/label 打包进一个结构体指针传给原生层
             MemorySegment names = arena.allocate(ValueLayout.ADDRESS, 3);
             names.setAtIndex(ValueLayout.ADDRESS, 0, vName);
@@ -818,9 +821,9 @@ public final class IrisMetalNativeBridge {
             return MemorySegment.NULL;  // 返回 NULL 而不是抛异常，让调用者处理
         }
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment src = allocateUtf8String(arena, mslSource);
-            MemorySegment name = allocateUtf8String(arena, functionName);
-            MemorySegment labelSeg = allocateUtf8String(arena, label);
+            MemorySegment src = allocateUtf8String( mslSource);
+            MemorySegment name = allocateUtf8String( functionName);
+            MemorySegment labelSeg = allocateUtf8String( label);
             MemorySegment names = arena.allocate(ValueLayout.ADDRESS, 2);
             names.setAtIndex(ValueLayout.ADDRESS, 0, name);
             names.setAtIndex(ValueLayout.ADDRESS, 1, labelSeg);
@@ -1255,7 +1258,7 @@ public final class IrisMetalNativeBridge {
         try {
             String msl = SPIRVToMslConverter.convert(spirv, mslVersion);
             if (msl != null && !msl.isEmpty()) {
-                return allocateUtf8String(Arena.ofAuto(), msl);
+                return allocateUtf8String(msl);
             }
         } catch (Exception e) {
             Iris.logger.warn("SPIRV-Cross compilation failed: " + e.getMessage());
@@ -1268,8 +1271,8 @@ public final class IrisMetalNativeBridge {
             throw new UnsupportedOperationException("GLSL to MSL compiler is not available on this platform");
         }
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment src = allocateUtf8String(arena, glslSource);
-            MemorySegment entry = allocateUtf8String(arena, entryPoint);
+            MemorySegment src = allocateUtf8String(glslSource);
+            MemorySegment entry = allocateUtf8String(entryPoint);
             MemorySegment errorOut = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment result = (MemorySegment) compileGlslToMsl.invoke(src, entry, stage, MemorySegment.NULL, errorOut);
             MemorySegment errorSeg = errorOut.get(ValueLayout.ADDRESS, 0);
@@ -1546,8 +1549,8 @@ public final class IrisMetalNativeBridge {
             return MemorySegment.NULL;
         }
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment source = allocateUtf8String(arena, mslSource);
-            MemorySegment entry = allocateUtf8String(arena, "main0");
+            MemorySegment source = allocateUtf8String( mslSource);
+            MemorySegment entry = allocateUtf8String( "main0");
             MemorySegment function = (MemorySegment) createShaderFunction.invoke(device, source, entry);
             return function;
         } catch (Throwable t) {
