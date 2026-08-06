@@ -3,7 +3,6 @@ package net.irisshaders.iris.metal.texture;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.irisshaders.iris.gl.texture.InternalTextureFormat;
-import net.irisshaders.iris.metal.IrisMetalDevice;
 import net.irisshaders.iris.metal.bridge.IrisMetalNativeBridge;
 import org.jspecify.annotations.Nullable;
 
@@ -72,7 +71,6 @@ public final class MetalTexture implements AutoCloseable {
         this.mipLevels = mipLevels;
         this.type = type;
 
-        MemorySegment device = IrisMetalDevice.get().deviceHandle();
         // MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite | MTLTextureUsageRenderTarget
         int usage = 0x1 | 0x2 | 0x4;
         // MTLStorageModePrivate - GPU 私有内存，性能最佳，数据上传通过 blit encoder
@@ -81,7 +79,8 @@ public final class MetalTexture implements AutoCloseable {
         switch (type) {
             case TEXTURE_2D:
                 // cubeCompatible=0 means regular 2D texture, not a cube
-                this.handle = IrisMetalNativeBridge.createTexture2D(device, mtlPixelFormat,
+                // Note: metallum_create_texture_2d 内部获取设备，不需要传入 device
+                this.handle = IrisMetalNativeBridge.createTexture2D(mtlPixelFormat,
                         width, height, 1, mipLevels, 0, usage, storageMode, label);
                 break;
             case TEXTURE_3D:
@@ -89,7 +88,7 @@ public final class MetalTexture implements AutoCloseable {
                     throw new UnsupportedOperationException(
                         "3D textures are not supported on this platform. Shader pack requires 3D texture support.");
                 }
-                this.handle = IrisMetalNativeBridge.createTexture3D(device, mtlPixelFormat,
+                this.handle = IrisMetalNativeBridge.createTexture3D(mtlPixelFormat,
                         width, height, depth, mipLevels, usage, storageMode, label);
                 break;
             case TEXTURE_CUBE:
@@ -97,7 +96,7 @@ public final class MetalTexture implements AutoCloseable {
                     throw new UnsupportedOperationException(
                         "Cube textures are not supported on this platform. Shader pack requires cube texture support.");
                 }
-                this.handle = IrisMetalNativeBridge.createTextureCube(device, mtlPixelFormat,
+                this.handle = IrisMetalNativeBridge.createTextureCube(mtlPixelFormat,
                         Math.max(width, height), mipLevels, usage, storageMode, label);
                 break;
             default:

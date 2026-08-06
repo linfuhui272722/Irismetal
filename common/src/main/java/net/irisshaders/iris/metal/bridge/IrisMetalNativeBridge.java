@@ -276,13 +276,16 @@ public final class IrisMetalNativeBridge {
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
 
         // 纹理
-        // Note: pixelFormat is MTLPixelFormat (UInt32 on Swift side), so use JAVA_INT
+        // Note: metallum_create_texture_2d 不需要 device 参数，它内部自己获取系统默认设备
+        // 参数顺序: pixelFormat, width, height, depthOrLayers, mipLevels, cubeCompatible, usage, storageMode, label
         createTexture2D = downcall(lookup, "metallum_create_texture_2d",
-                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, LONG, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
-        createTexture3D = optionalDowncall(lookup, "metallum_create_texture_3d",
-                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
-        createTextureCube = optionalDowncall(lookup, "metallum_create_texture_cube",
-                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
+                FunctionDescriptor.of(ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
+        // Note: metallum_create_texture 需要 device 参数，用于创建 3D 和 cube 纹理
+        // 参数顺序: device, pixelFormat, width, height, depthOrLayers, mipLevels, dimension, cubeCompatible, usage, storageMode, label
+        createTexture3D = optionalDowncall(lookup, "metallum_create_texture",
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
+        createTextureCube = optionalDowncall(lookup, "metallum_create_texture",
+                FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
         textureReplaceRegion = optionalDowncall(lookup, "metallum_texture_replace_region",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, INT, LONG));
         textureGetBytes = optionalDowncall(lookup, "metallum_texture_get_bytes",
@@ -500,11 +503,11 @@ public final class IrisMetalNativeBridge {
     }
 
     // ===== 设备与命令队列 =====
-    public static MemorySegment createSystemDefaultDevice() {
+    public static MemorySegment getSystemDefaultDevice() {
         try {
             return (MemorySegment) createSystemDefaultDevice.invoke();
         } catch (Throwable t) {
-            throw new RuntimeException("Failed to create system default Metal device", t);
+            throw new RuntimeException("Failed to get system default Metal device", t);
         }
     }
 
@@ -652,12 +655,13 @@ public final class IrisMetalNativeBridge {
     }
 
     // ===== 纹理 =====
-    public static MemorySegment createTexture2D(MemorySegment device, int pixelFormat, long width, long height,
-                                                 long depthOrLayers, long mipLevels, long sampleCount,
+    // Note: metallum_create_texture_2d 内部自己获取系统默认设备，不需要传入 device
+    public static MemorySegment createTexture2D(int pixelFormat, long width, long height,
+                                                 long depthOrLayers, long mipLevels, long cubeCompatible,
                                                  int usage, int storageMode, String label) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment labelSeg = allocateUtf8String(arena, label);
-            MemorySegment result = (MemorySegment) createTexture2D.invoke(device, pixelFormat, width, height, depthOrLayers, mipLevels, sampleCount, usage, storageMode, labelSeg);
+            MemorySegment result = (MemorySegment) createTexture2D.invoke(pixelFormat, width, height, depthOrLayers, mipLevels, cubeCompatible, usage, storageMode, labelSeg);
             if (isNullHandle(result)) {
                 Iris.logger.warn("createTexture2D returned NULL for {} (format={}, {}x{}, mipLevels={})", 
                     label, pixelFormat, width, height, mipLevels);
@@ -669,27 +673,31 @@ public final class IrisMetalNativeBridge {
         }
     }
 
-    public static MemorySegment createTexture3D(MemorySegment device, int pixelFormat, long width, long height,
+    public static MemorySegment createTexture3D(int pixelFormat, long width, long height,
                                                  long depth, long mipLevels, int usage, int storageMode, String label) {
         if (createTexture3D == null) {
             return MemorySegment.NULL;  // 返回 NULL 而不是抛异常，让调用者处理
         }
         try (Arena arena = Arena.ofConfined()) {
+            MemorySegment device = getSystemDefaultDevice();
             MemorySegment labelSeg = allocateUtf8String(arena, label);
-            return (MemorySegment) createTexture3D.invoke(device, pixelFormat, width, height, depth, mipLevels, usage, storageMode, labelSeg);
+            // dimension=3 表示 3D 纹理
+            return (MemorySegment) createTexture3D.invoke(device, pixelFormat, width, height, depth, mipLevels, 3, 0, usage, storageMode, labelSeg);
         } catch (Throwable t) {
             throw new RuntimeException("Failed to create 3D texture", t);
         }
     }
 
-    public static MemorySegment createTextureCube(MemorySegment device, int pixelFormat, long size, long mipLevels,
+    public static MemorySegment createTextureCube(int pixelFormat, long size, long mipLevels,
                                                    int usage, int storageMode, String label) {
         if (createTextureCube == null) {
             return MemorySegment.NULL;  // 返回 NULL 而不是抛异常，让调用者处理
         }
         try (Arena arena = Arena.ofConfined()) {
+            MemorySegment device = getSystemDefaultDevice();
             MemorySegment labelSeg = allocateUtf8String(arena, label);
-            return (MemorySegment) createTextureCube.invoke(device, pixelFormat, size, mipLevels, usage, storageMode, labelSeg);
+            // cubeCompatible=1 表示 cube 纹理, dimension=2 表示 2D
+            return (MemorySegment) createTextureCube.invoke(device, pixelFormat, size, 1, mipLevels, 2, 1, usage, storageMode, labelSeg);
         } catch (Throwable t) {
             throw new RuntimeException("Failed to create cube texture", t);
         }
