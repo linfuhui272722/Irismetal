@@ -79,17 +79,55 @@ public class IrisRenderSystem {
                 // 尝试直接读取 options.txt 文件
                 // 这是最可靠的方法，因为不依赖任何类加载
                 try {
-                        // 尝试常见路径
-                        String[] possiblePaths = {
-                                "options.txt",
-                                "./options.txt",
-                                "../options.txt",
-                                System.getProperty("user.dir") + "/options.txt"
-                        };
+                        // 尝试多种路径
+                        java.util.ArrayList<java.nio.file.Path> pathsToTry = new java.util.ArrayList<>();
                         
-                        for (String pathStr : possiblePaths) {
+                        // 1. user.dir 路径
+                        String userDir = System.getProperty("user.dir", "");
+                        if (!userDir.isEmpty()) {
+                                pathsToTry.add(java.nio.file.Paths.get(userDir, "options.txt"));
+                                pathsToTry.add(java.nio.file.Paths.get(userDir, ".minecraft", "options.txt"));
+                                pathsToTry.add(java.nio.file.Paths.get(userDir, "minecraft", "options.txt"));
+                        }
+                        
+                        // 2. 常见相对路径
+                        pathsToTry.add(java.nio.file.Paths.get("options.txt"));
+                        pathsToTry.add(java.nio.file.Paths.get(".minecraft", "options.txt"));
+                        pathsToTry.add(java.nio.file.Paths.get("minecraft", "options.txt"));
+                        pathsToTry.add(java.nio.file.Paths.get("..", "options.txt"));
+                        pathsToTry.add(java.nio.file.Paths.get("..", ".minecraft", "options.txt"));
+                        
+                        // 3. 尝试查找 minecraft 目录（iOS 环境下）
+                        try {
+                                java.nio.file.DirectoryStream.Filter<java.nio.file.Path> dirFilter = 
+                                        entry -> java.nio.file.Files.isDirectory(entry) && 
+                                                (entry.getFileName().toString().contains("minecraft") ||
+                                                 entry.getFileName().toString().contains("games") ||
+                                                 entry.getFileName().toString().contains("Application"));
+                                try (java.nio.file.DirectoryStream<java.nio.file.Path> stream = 
+                                        java.nio.file.Files.newDirectoryStream(java.nio.file.Paths.get("/private/var/mobile/Containers/Data/Application"), dirFilter)) {
+                                        for (java.nio.file.Path appPath : stream) {
+                                                java.nio.file.Path mcPath = appPath.resolve("Documents/Library/Application Support/minecraft");
+                                                if (java.nio.file.Files.exists(mcPath)) {
+                                                        pathsToTry.add(mcPath.resolve("options.txt"));
+                                                        // 也检查 instances 子目录
+                                                        java.nio.file.Path instancesPath = mcPath.resolve("instances");
+                                                        if (java.nio.file.Files.exists(instancesPath)) {
+                                                                try (java.nio.file.DirectoryStream<java.nio.file.Path> instances = 
+                                                                        java.nio.file.Files.newDirectoryStream(instancesPath)) {
+                                                                        for (java.nio.file.Path instance : instances) {
+                                                                                pathsToTry.add(instance.resolve("options.txt"));
+                                                                        }
+                                                                }
+                                                        }
+                                                }
+                                        }
+                                }
+                        } catch (Throwable ignored) {}
+                        
+                        // 尝试每个路径
+                        for (java.nio.file.Path path : pathsToTry) {
                                 try {
-                                        java.nio.file.Path path = java.nio.file.Paths.get(pathStr);
                                         if (java.nio.file.Files.exists(path) && java.nio.file.Files.isReadable(path)) {
                                                 String content = new String(java.nio.file.Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
                                                 if (checkBackendInContent(content)) {
@@ -99,18 +137,6 @@ public class IrisRenderSystem {
                                                 }
                                         }
                                 } catch (Throwable ignored) {}
-                        }
-                        
-                        // 尝试通过工作目录
-                        java.nio.file.Path workingDir = java.nio.file.Paths.get(System.getProperty("user.dir"));
-                        java.nio.file.Path optionsPath = workingDir.resolve("options.txt");
-                        if (java.nio.file.Files.exists(optionsPath) && java.nio.file.Files.isReadable(optionsPath)) {
-                                String content = new String(java.nio.file.Files.readAllBytes(optionsPath), java.nio.charset.StandardCharsets.UTF_8);
-                                if (checkBackendInContent(content)) {
-                                        isUsingMetal = true;
-                                        metalModeChecked = true;
-                                        return true;
-                                }
                         }
                         
                 } catch (Throwable ignored) {}
