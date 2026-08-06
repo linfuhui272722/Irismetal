@@ -8,7 +8,9 @@ import net.irisshaders.iris.metal.bridge.IrisMetalNativeBridge;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.foreign.MemorySegment;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -203,23 +205,90 @@ public final class MetalShaderCompiler {
     private static String adaptGlslForVulkan(String source, ShaderType type) {
         String result = source;
 
-        // 确保 #version 声明存在且为 450+
-        if (!result.contains("#version 4")) {
-            // 移除旧的 #version 声明
-            result = result.replaceAll("#version\\s+\\d+(\\s+\\w+)?", "");
-            // 在开头添加 Vulkan 风格的 #version
-            result = "#version 450 core\n" + result;
-            Iris.logger.info("[Iris-Metal] Added #version 450 to shader");
-        } else {
-            // 检查是否有非 block 的 uniform
-            if (result.contains("uniform ") && !result.contains("uniform {") && result.contains("#version 450")) {
-                // Vulkan GLSL 要求 uniform 在 block 中
-                // 检查是否有形如 "uniform float x;" 的声明
-                Iris.logger.warn("[Iris-Metal] Shader has uniforms outside of blocks! Vulkan requires all uniforms to be in uniform blocks.");
-                // 打印前 1000 字符以供调试
-                String preview = result.substring(0, Math.min(1000, result.length())).replace("\n", "\\n");
-                Iris.logger.info("[Iris-Metal] Shader preview: {}", preview);
+        // 检查 shader 版本
+        boolean needsUpgrade = false;
+        if (result.contains("#version 330")) {
+            needsUpgrade = true;
+        }
+
+        // 将 #version 330 升级为 450
+        if (result.contains("#version 330")) {
+            result = result.replace("#version 330 core", "#version 450 core");
+            result = result.replace("#version 330", "#version 450 core");
+            Iris.logger.info("[Iris-Metal] Upgraded shader from #version 330 to #version 450");
+        }
+
+        // Vulkan GLSL 要求所有 uniform 必须在 block 中
+        // 将非 block 的 uniform 移动到 iris_VertexTransforms block
+        // 首先检查是否有需要转换的 uniform
+        if (result.contains("uniform mat4 iris_ModelViewMatInverse;") ||
+            result.contains("uniform mat4 iris_ProjMatInverse;") ||
+            result.contains("uniform mat3 iris_NormalMat;") ||
+            result.contains("uniform mat4 iris_LightmapTextureMatrix;")) {
+            
+            // 找到 uniform 声明的位置
+            StringBuilder newShader = new StringBuilder();
+            String[] lines = result.split("\n");
+            boolean inUniformBlock = false;
+            boolean addedVertexTransformsBlock = false;
+            List<String> vertexUniforms = new ArrayList<>();
+            
+            for (String line : lines) {
+                // 收集需要移动的 uniform
+                if (line.contains("uniform mat4 iris_ModelViewMatInverse;") ||
+                    line.contains("uniform mat4 iris_ProjMatInverse;") ||
+                    line.contains("uniform mat3 iris_NormalMat;") ||
+                    line.contains("uniform mat4 iris_LightmapTextureMatrix;")) {
+                    // 提取 uniform 类型和名称
+                    String uniformLine = line.trim().replace("uniform ", "").replace(";", "");
+                    vertexUniforms.add(uniformLine);
+                    Iris.logger.info("[Iris-Metal] Moving uniform to block: {}", line.trim());
+                    continue; // 跳过这一行，稍后添加到 block
+                }
+                
+                // 找到现有的 uniform block 开始
+                if (line.contains("layout(std140) uniform iris_DynamicTransforms")) {
+                    inUniformBlock = true;
+                }
+                
+                // 找到 uniform block 结束
+                if (inUniformBlock && line.contains("} iris_transforms;")) {
+                    inUniformBlock = false;
+                    
+                    // 如果还没有添加 VertexTransforms block，且收集到了 uniform
+                    if (!addedVertexTransformsBlock && !vertexUniforms.isEmpty()) {
+                        newShader.append("layout(std140) uniform iris_VertexTransforms {\n");
+                        for (String uniform : vertexUniforms) {
+                            newShader.append(uniform).append(";\n");
+                        }
+                        newShader.append("};\n\n");
+                        addedVertexTransformsBlock = true;
+                    }
+                }
+                
+                newShader.append(line).append("\n");
             }
+            
+            // 如果 shader 没有 uniform block 但有 vertex uniforms
+            if (!addedVertexTransformsBlock && !vertexUniforms.isEmpty()) {
+                // 在 #version 之后插入 block
+                String versionLine = "";
+                String rest = newShader.toString();
+                int versionEnd = rest.indexOf("\n");
+                if (versionEnd > 0) {
+                    versionLine = rest.substring(0, versionEnd + 1);
+                    rest = rest.substring(versionEnd + 1);
+                    newShader = new StringBuilder(versionLine);
+                    newShader.append("layout(std140) uniform iris_VertexTransforms {\n");
+                    for (String uniform : vertexUniforms) {
+                        newShader.append(uniform).append(";\n");
+                    }
+                    newShader.append("};\n\n");
+                    newShader.append(rest);
+                }
+            }
+            
+            result = newShader.toString();
         }
 
         // gl_FragColor → 显式 output（如果 transformer 未处理）
