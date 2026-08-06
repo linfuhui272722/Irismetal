@@ -44,6 +44,12 @@ public final class IrisMetalDevice {
     private int frameDepth = 0;
 
     private IrisMetalDevice() {
+        // 在加载原生库之前，先检查 metallum 是否已加载
+        // 如果 metallum 已加载，委托给它处理 Metal 渲染，避免冲突
+        if (isMetallumLoaded()) {
+            throw new IllegalStateException("Iris Metal backend is not available because metallum is loaded");
+        }
+
         IrisMetalNativeBridge.ensureLoaded();
         if (!IrisMetalNativeBridge.isAvailable()) {
             throw new IllegalStateException("Iris Metal backend is not available on this platform");
@@ -59,6 +65,20 @@ public final class IrisMetalDevice {
             throw new IllegalStateException("Failed to create Metal command queue");
         }
         Iris.logger.info("[Iris-Metal] Initialized on device: {}", deviceName);
+    }
+
+    /**
+     * 检查 metallum mod 是否已加载。
+     */
+    private static boolean isMetallumLoaded() {
+        try {
+            Class.forName("com.metallum.Metallum");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        } catch (Throwable e) {
+            return false;
+        }
     }
 
     /**
