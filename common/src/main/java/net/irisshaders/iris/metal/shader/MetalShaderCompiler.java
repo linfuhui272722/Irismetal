@@ -212,16 +212,92 @@ public final class MetalShaderCompiler {
     private static String adaptGlslForVulkan(String source, ShaderType type) {
         String result = source;
 
-        // 检查 shader 版本 - MC 26.2 的 GlslCompiler 可能已经处理了版本
+        // 检查 shader 版本
         if (result.contains("#version 330")) {
             result = result.replace("#version 330 core", "#version 450 core");
             result = result.replace("#version 330", "#version 450 core");
             Iris.logger.info("[Iris-Metal] Upgraded shader from #version 330 to #version 450");
         }
 
-        // 打印原始 shader 的前 500 字符用于调试
-        String originalPreview = result.substring(0, Math.min(500, result.length())).replace("\n", "\\n");
-        Iris.logger.info("[Iris-Metal] Original shader preview: {}", originalPreview);
+        // Vulkan GLSL 要求 non-opaque uniform 必须在 uniform block 中
+        // 为每个顶层 uniform 创建一个单独的 block
+        
+        // 首先收集所有顶层 uniform
+        List<String> topLevelUniforms = new ArrayList<>();
+        String[] lines = result.split("\n");
+        StringBuilder filteredSource = new StringBuilder();
+        int braceDepth = 0;
+        
+        for (String line : lines) {
+            // 计算 brace depth
+            for (char c : line.toCharArray()) {
+                if (c == '{') braceDepth++;
+                if (c == '}') braceDepth--;
+            }
+            
+            // 检查是否是顶层 uniform（不在 block 内，且不是 block 定义）
+            if (braceDepth == 0 && line.trim().startsWith("uniform ") && !line.trim().contains("{")) {
+                String trimmed = line.trim();
+                if (trimmed.endsWith(";")) {
+                    String uniformLine = trimmed.substring(0, trimmed.length() - 1).trim();
+                    String[] parts = uniformLine.split("\\s+");
+                    if (parts.length >= 3) {
+                        String uniformType = parts[1];
+                        String uniformName = parts[2];
+                        topLevelUniforms.add(uniformType + " " + uniformName);
+                        Iris.logger.info("[Iris-Metal] Found top-level uniform: {} {}", uniformType, uniformName);
+                        continue; // 跳过这行
+                    }
+                }
+            }
+            
+            filteredSource.append(line).append("\n");
+        }
+        
+        // 为每个顶层 uniform 创建单独的 block
+        if (!topLevelUniforms.isEmpty()) {
+            StringBuilder newBlocks = new StringBuilder();
+            int counter = 0;
+            for (String uniform : topLevelUniforms) {
+                String[] parts = uniform.split("\\s+");
+                String uniformType = parts[0];
+                String uniformName = parts[1];
+                
+                // Block 类型名和实例名使用不同的名字避免冲突
+                // 使用带数字后缀的名称确保唯一性
+                String blockTypeName = "iris_UniformBlock" + counter;
+                String blockVarName = "iris_" + uniformName;
+                
+                newBlocks.append("layout(std140) uniform ").append(blockTypeName).append(" {\n");
+                newBlocks.append("    ").append(uniformType).append(" ").append(uniformName).append(";\n");
+                newBlocks.append("} ").append(blockVarName).append(";\n\n");
+                
+                Iris.logger.info("[Iris-Metal] Created block: layout(std140) uniform {} {{ {} {}; }} {};",
+                    blockTypeName, uniformType, uniformName, blockVarName);
+                counter++;
+            }
+            
+            // 在第一个 uniform block 之前插入
+            String filtered = filteredSource.toString();
+            int insertPos = filtered.indexOf("layout(std140) uniform");
+            if (insertPos > 0) {
+                result = filtered.substring(0, insertPos) + newBlocks.toString() + filtered.substring(insertPos);
+            } else {
+                // 在 #version 之后插入
+                int versionEnd = filtered.indexOf("\n", filtered.indexOf("#version"));
+                if (versionEnd > 0) {
+                    result = filtered.substring(0, versionEnd + 1) + newBlocks.toString() + filtered.substring(versionEnd + 1);
+                } else {
+                    result = newBlocks.toString() + filtered;
+                }
+            }
+        } else {
+            result = filteredSource.toString();
+        }
+        
+        // 打印转换后的 shader
+        String shaderPreview = result.substring(0, Math.min(2000, result.length())).replace("\n", "\\n");
+        Iris.logger.info("[Iris-Metal] Adapted shader preview: {}", shaderPreview);
 
         // gl_FragColor → 显式 output（如果 transformer 未处理）
         if (type == ShaderType.FRAGMENT && result.contains("gl_FragColor")) {
