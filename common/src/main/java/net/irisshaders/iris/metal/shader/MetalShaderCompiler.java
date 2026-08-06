@@ -292,8 +292,24 @@ public final class MetalShaderCompiler {
      * Opaque 类型的 uniform 不能放入 std140 uniform block
      */
     private static boolean isOpaqueType(String declaration) {
-        String lower = declaration.toLowerCase();
-        return lower.contains("sampler") || lower.contains("image") || lower.contains("texture") || lower.contains("atomic_uint");
+        // 检查类型部分（第一个关键字）
+        String trimmed = declaration.trim();
+        if (trimmed.startsWith("uniform ")) {
+            trimmed = trimmed.substring(8);
+        }
+        
+        // 获取类型关键字
+        String[] parts = trimmed.split("\\s+");
+        if (parts.length == 0) return false;
+        
+        String type = parts[0].toLowerCase();
+        
+        // Opaque 类型：sampler, image, texture, atomic_uint
+        if (type.contains("sampler") || type.contains("image") || type.contains("texture") || type.equals("atomic_uint")) {
+            return true;
+        }
+        
+        return false;
     }
     
     /**
