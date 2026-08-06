@@ -243,8 +243,9 @@ public final class MetalShaderCompiler {
             
             String trimmed = line.trim();
             
-            // 检查是否是顶层的 uniform 声明（不在 block 内，不是 block 定义，不是 opaque 类型）
-            if (braceDepth == 0 && trimmed.startsWith("uniform ") && !trimmed.contains("{") && !isOpaqueType(trimmed)) {
+            // 检查是否是顶层的 uniform 声明（不在 block 内，不是 block 定义）
+            // 允许 opaque 类型也进入 block（sampler, image 等）
+            if (braceDepth == 0 && trimmed.startsWith("uniform ") && !trimmed.contains("{")) {
                 // 收集这个 uniform
                 String uniformDecl = extractUniformDeclaration(trimmed);
                 if (uniformDecl != null && !uniformDecl.isEmpty()) {
@@ -252,9 +253,10 @@ public final class MetalShaderCompiler {
                     Iris.logger.info("[Iris-Metal] Found loose uniform: {}", uniformDecl);
                 }
                 // 不添加到 body，删除这行
-            } else {
-                body.append(line).append("\n");
+                continue;
             }
+            
+            body.append(line).append("\n");
         }
         
         // 如果没有 loose uniform，直接返回
@@ -275,15 +277,6 @@ public final class MetalShaderCompiler {
         int insertPos = findDirectivePreludeEnd(shaderBody);
         
         return shaderBody.substring(0, insertPos) + block.toString() + shaderBody.substring(insertPos);
-    }
-    
-    /**
-     * 检查是否是 opaque 类型（sampler, image, texture 等）
-     * Opaque 类型的 uniform 可以保留为 loose uniform
-     */
-    private static boolean isOpaqueType(String declaration) {
-        String lower = declaration.toLowerCase();
-        return lower.contains("sampler") || lower.contains("image") || lower.contains("texture") || lower.contains("atomic_uint");
     }
     
     /**
