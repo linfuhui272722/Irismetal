@@ -4,6 +4,10 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.metal.bridge.IrisMetalNativeBridge;
+import net.irisshaders.iris.metal.framebuffer.MetalFramebuffer;
+import net.irisshaders.iris.metal.framebuffer.MetalRenderPassEncoder;
+import net.irisshaders.iris.metal.program.MetalCompiledProgram;
+import net.irisshaders.iris.metal.texture.MetalTexture;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.foreign.MemorySegment;
@@ -42,14 +46,15 @@ public final class IrisMetalDevice {
     @Nullable
     private MemorySegment currentCommandBuffer;
     private int frameDepth = 0;
+    
+    // 管道管理器 (使用单例)
+    private final IrisMetalPipelineManager pipelineManager = IrisMetalPipelineManager.get();
 
     private IrisMetalDevice() {
-        // 在加载原生库之前，先检查 metallum 是否已加载
-        // 如果 metallum 已加载，委托给它处理 Metal 渲染，避免冲突
-        if (isMetallumLoaded()) {
-            throw new IllegalStateException("Iris Metal backend is not available because metallum is loaded");
-        }
-
+        // 加载原生库
+        // 注意：metallum 和 Iris 使用相同的原生库 (libmetallum.dylib)
+        // MTLCreateSystemDefaultDevice() 在同一进程中返回相同的设备单例
+        // 所以即使 metallum 已加载，Iris 也可以安全地创建设备
         IrisMetalNativeBridge.ensureLoaded();
         if (!IrisMetalNativeBridge.isAvailable()) {
             throw new IllegalStateException("Iris Metal backend is not available on this platform");
@@ -64,13 +69,19 @@ public final class IrisMetalDevice {
             IrisMetalNativeBridge.releaseObject(device);
             throw new IllegalStateException("Failed to create Metal command queue");
         }
+        
+        // 检查 metallum 是否已加载，用于日志记录
+        if (isMetallumLoaded()) {
+            Iris.logger.info("[Iris-Metal] Metallum mod detected, will integrate with its rendering pipeline");
+        }
+        
         Iris.logger.info("[Iris-Metal] Initialized on device: {}", deviceName);
     }
 
     /**
      * 检查 metallum mod 是否已加载。
      */
-    private static boolean isMetallumLoaded() {
+    public static boolean isMetallumLoaded() {
         try {
             Class.forName("com.metallum.Metallum");
             return true;
@@ -203,5 +214,64 @@ public final class IrisMetalDevice {
             IrisMetalNativeBridge.releaseObject(device);
         }
         instance = null;
+    }
+
+    /**
+     * 清除帧缓冲区颜色。
+     */
+    public void clearColor(MetalFramebuffer framebuffer, float r, float g, float b, float a) {
+        try {
+            float[][] clearColors = new float[][]{{r, g, b, a}};
+            try (MetalRenderPassEncoder encoder = framebuffer.beginRenderPassWithClear(clearColors, 1.0f)) {
+                // encoder auto-closes and ends encoding
+            }
+        } catch (Exception e) {
+            Iris.logger.warn("[Iris-Metal] Failed to clear color: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 清除帧缓冲区深度。
+     */
+    public void clearDepth(MetalTexture depthTexture, float value) {
+        // 深度清除需要临时 framebuffer，这需要在 framebuffer 层面实现
+        // 目前通过 beginRenderPassWithClear 的 depth 参数实现
+        Iris.logger.warn("[Iris-Metal] clearDepth called - implement with MetalFramebuffer if needed");
+    }
+
+    /**
+     * 设置当前渲染程序。
+     */
+    public void setProgram(MetalCompiledProgram program) {
+        pipelineManager.bindProgram(program != null ? program.name() : null);
+    }
+
+    /**
+     * 绘制全屏四边形。
+     */
+    public void drawFullscreenQuad() {
+        MetalCompiledProgram program = pipelineManager.getActiveProgram();
+        if (program == null) {
+            return;
+        }
+        
+        MetalFramebuffer fb = pipelineManager.getActiveFramebuffer();
+        if (fb == null) {
+            return;
+        }
+        
+        try (MetalRenderPassEncoder encoder = fb.beginRenderPassNoClear()) {
+            if (encoder == null) {
+                return;
+            }
+            
+            // 设置 pipeline state
+            encoder.setPipeline(program);
+            
+            // 绘制三角形 (6 vertices for two triangles = fullscreen quad)
+            encoder.drawPrimitives(3, 0, 6, 1);
+        } catch (Exception e) {
+            Iris.logger.warn("[Iris-Metal] Failed to draw fullscreen quad: {}", e.getMessage());
+        }
     }
 }

@@ -19,6 +19,7 @@ import net.irisshaders.iris.gui.screen.ShaderPackScreen;
 import net.irisshaders.iris.helpers.OptionalBoolean;
 import net.irisshaders.iris.pbr.texture.PBRTextureManager;
 import net.irisshaders.iris.pipeline.IrisRenderingPipeline;
+import net.irisshaders.iris.metal.pipeline.IrisMetalRenderingPipeline;
 import net.irisshaders.iris.pipeline.PipelineManager;
 import net.irisshaders.iris.pipeline.VanillaRenderingPipeline;
 import net.irisshaders.iris.pipeline.WorldRenderingPipeline;
@@ -645,6 +646,17 @@ public class Iris {
 		}
 
 		ProgramSet programs = currentPack.getProgramSet(dimensionId);
+
+		// Check if we're on Metal backend
+		if (IrisRenderSystem.isUsingMetalBackend()) {
+			logger.info("Metal backend active, using Metal rendering pipeline");
+			try {
+				return new IrisMetalRenderingPipeline(programs);
+			} catch (Exception e) {
+				logger.error("Failed to create Metal shader rendering pipeline, falling back to vanilla: {}", e.getMessage());
+				return new VanillaRenderingPipeline();
+			}
+		}
 
 		// We use DeferredWorldRenderingPipeline on 1.16, and NewWorldRendering pipeline on 1.17 when rendering shaders.
 		try {
