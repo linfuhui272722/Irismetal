@@ -39,8 +39,9 @@ import java.nio.file.StandardCopyOption;
  */
 @Environment(EnvType.CLIENT)
 public final class IrisMetalNativeBridge {
-    private static final String MACOS_RESOURCE_PATH = "/natives/macos/libiris_metal.dylib";
-    private static final String IOS_RESOURCE_PATH = "/natives/ios/libiris_metal.dylib";
+    // 使用 metallum 的原生库
+    private static final String MACOS_RESOURCE_PATH = "/natives/macos/libmetallum.dylib";
+    private static final String IOS_RESOURCE_PATH = "/natives/ios/libmetallum.dylib";
     private static final ValueLayout.OfInt INT = ValueLayout.JAVA_INT;
     private static final ValueLayout.OfLong LONG = ValueLayout.JAVA_LONG;
     private static final ValueLayout.OfFloat FLOAT = ValueLayout.JAVA_FLOAT;
@@ -236,138 +237,138 @@ public final class IrisMetalNativeBridge {
 
     private static void resolveAll(SymbolLookup lookup) {
         // 设备与命令队列
-        createSystemDefaultDevice = downcall(lookup, "iris_metal_create_system_default_device",
+        createSystemDefaultDevice = downcall(lookup, "metallum_create_system_default_device",
                 FunctionDescriptor.of(ValueLayout.ADDRESS));
-        copyDeviceName = downcall(lookup, "iris_metal_copy_device_name",
+        copyDeviceName = downcall(lookup, "metallum_copy_device_name",
                 FunctionDescriptor.of(INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG));
-        deviceMakeCommandQueue = downcall(lookup, "iris_metal_MTLDevice_makeCommandQueue",
+        deviceMakeCommandQueue = downcall(lookup, "metallum_MTLDevice_makeCommandQueue",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        commandQueueMakeCommandBuffer = downcall(lookup, "iris_metal_MTLCommandQueue_makeCommandBuffer",
+        commandQueueMakeCommandBuffer = downcall(lookup, "metallum_MTLCommandQueue_makeCommandBuffer",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        commandBufferCommit = downcall(lookup, "iris_metal_MTLCommandBuffer_commit",
+        commandBufferCommit = downcall(lookup, "metallum_MTLCommandBuffer_commit",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
-        commandBufferWaitUntilCompleted = downcallWithoutCritical(lookup, "iris_metal_MTLCommandBuffer_waitUntilCompleted",
+        commandBufferWaitUntilCompleted = downcallWithoutCritical(lookup, "metallum_MTLCommandBuffer_waitUntilCompleted",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
-        commandBufferIsCompleted = downcall(lookup, "iris_metal_MTLCommandBuffer_isCompleted",
+        commandBufferIsCompleted = downcall(lookup, "metallum_MTLCommandBuffer_isCompleted",
                 FunctionDescriptor.of(INT, ValueLayout.ADDRESS));
-        commandBufferPushDebugGroup = downcall(lookup, "iris_metal_MTLCommandBuffer_pushDebugGroup",
+        commandBufferPushDebugGroup = downcall(lookup, "metallum_MTLCommandBuffer_pushDebugGroup",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        commandBufferPopDebugGroup = downcall(lookup, "iris_metal_MTLCommandBuffer_popDebugGroup",
+        commandBufferPopDebugGroup = downcall(lookup, "metallum_MTLCommandBuffer_popDebugGroup",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
-        commandBufferMakeRenderCommandEncoder = downcall(lookup, "iris_metal_MTLCommandBuffer_makeRenderCommandEncoder",
+        commandBufferMakeRenderCommandEncoder = downcall(lookup, "metallum_MTLCommandBuffer_makeRenderCommandEncoder",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                         DOUBLE, DOUBLE, INT, FLOAT, FLOAT, FLOAT, FLOAT, INT, DOUBLE));
-        commandBufferMakeBlitCommandEncoder = downcall(lookup, "iris_metal_MTLCommandBuffer_makeBlitCommandEncoder",
+        commandBufferMakeBlitCommandEncoder = downcall(lookup, "metallum_MTLCommandBuffer_makeBlitCommandEncoder",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        commandBufferMakeComputeCommandEncoder = downcall(lookup, "iris_metal_MTLCommandBuffer_makeComputeCommandEncoder",
+        commandBufferMakeComputeCommandEncoder = downcall(lookup, "metallum_MTLCommandBuffer_makeComputeCommandEncoder",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        commandEncoderEndEncoding = downcall(lookup, "iris_metal_MTLCommandEncoder_endEncoding",
+        commandEncoderEndEncoding = downcall(lookup, "metallum_MTLCommandEncoder_endEncoding",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
 
         // 纹理
-        createTexture2D = downcall(lookup, "iris_metal_create_texture_2d",
+        createTexture2D = downcall(lookup, "metallum_create_texture_2d",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
-        createTexture3D = downcall(lookup, "iris_metal_create_texture_3d",
+        createTexture3D = downcall(lookup, "metallum_create_texture_3d",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
-        createTextureCube = downcall(lookup, "iris_metal_create_texture_cube",
+        createTextureCube = downcall(lookup, "metallum_create_texture_cube",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, LONG, LONG, LONG, INT, INT, ValueLayout.ADDRESS));
-        textureReplaceRegion = downcall(lookup, "iris_metal_texture_replace_region",
+        textureReplaceRegion = downcall(lookup, "metallum_texture_replace_region",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, INT, LONG));
-        textureGetBytes = downcall(lookup, "iris_metal_texture_get_bytes",
+        textureGetBytes = downcall(lookup, "metallum_texture_get_bytes",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, INT, LONG));
-        releaseObject = downcall(lookup, "iris_metal_release_object",
+        releaseObject = downcall(lookup, "metallum_release_object",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
 
         // Buffer
-        createBuffer = downcall(lookup, "iris_metal_create_buffer",
+        createBuffer = downcall(lookup, "metallum_create_buffer",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        bufferContents = downcall(lookup, "iris_metal_buffer_contents",
+        bufferContents = downcall(lookup, "metallum_get_buffer_contents",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        bufferReplaceRegion = downcall(lookup, "iris_metal_buffer_replace_region",
+        bufferReplaceRegion = downcall(lookup, "metallum_buffer_replace_region",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG));
 
         // Render Pipeline
-        compileRenderPipeline = downcall(lookup, "iris_metal_compile_render_pipeline",
+        compileRenderPipeline = downcall(lookup, "metallum_compile_render_pipeline",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS));
-        compileComputePipeline = downcall(lookup, "iris_metal_compile_compute_pipeline",
+        compileComputePipeline = downcall(lookup, "metallum_compile_compute_pipeline",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        renderEncoderSetRenderPipelineState = downcall(lookup, "iris_metal_renderEncoder_setRenderPipelineState",
+        renderEncoderSetRenderPipelineState = downcall(lookup, "metallum_renderEncoder_setRenderPipelineState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        renderEncoderSetDepthStencilState = downcall(lookup, "iris_metal_renderEncoder_setDepthStencilState",
+        renderEncoderSetDepthStencilState = downcall(lookup, "metallum_renderEncoder_setDepthStencilState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        renderEncoderSetDepthBias = downcall(lookup, "iris_metal_renderEncoder_setDepthBias",
+        renderEncoderSetDepthBias = downcall(lookup, "metallum_renderEncoder_setDepthBias",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, FLOAT, FLOAT, FLOAT));
-        renderEncoderSetFrontFacingWinding = downcall(lookup, "iris_metal_renderEncoder_setFrontFacingWinding",
+        renderEncoderSetFrontFacingWinding = downcall(lookup, "metallum_renderEncoder_setFrontFacingWinding",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderSetCullMode = downcall(lookup, "iris_metal_renderEncoder_setCullMode",
+        renderEncoderSetCullMode = downcall(lookup, "metallum_renderEncoder_setCullMode",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderSetTriangleFillMode = downcall(lookup, "iris_metal_renderEncoder_setTriangleFillMode",
+        renderEncoderSetTriangleFillMode = downcall(lookup, "metallum_renderEncoder_setTriangleFillMode",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderSetBuffer = downcall(lookup, "iris_metal_renderEncoder_setBuffer",
+        renderEncoderSetBuffer = downcall(lookup, "metallum_renderEncoder_setBuffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, INT));
-        renderEncoderSetBufferOffset = downcall(lookup, "iris_metal_renderEncoder_setBufferOffset",
+        renderEncoderSetBufferOffset = downcall(lookup, "metallum_renderEncoder_setBufferOffset",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, INT));
-        renderEncoderSetTexture = downcall(lookup, "iris_metal_renderEncoder_setTexture",
+        renderEncoderSetTexture = downcall(lookup, "metallum_renderEncoder_setTexture",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        renderEncoderSetSamplerState = downcall(lookup, "iris_metal_renderEncoder_setSamplerState",
+        renderEncoderSetSamplerState = downcall(lookup, "metallum_renderEncoder_setSamplerState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        renderEncoderSetScissorRect = downcall(lookup, "iris_metal_renderEncoder_setScissorRect",
+        renderEncoderSetScissorRect = downcall(lookup, "metallum_renderEncoder_setScissorRect",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
-        renderEncoderSetViewport = downcall(lookup, "iris_metal_renderEncoder_setViewport",
+        renderEncoderSetViewport = downcall(lookup, "metallum_renderEncoder_setViewport",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, DOUBLE, DOUBLE, DOUBLE, DOUBLE, DOUBLE, DOUBLE, LONG, LONG));
-        renderEncoderSetBlendColor = downcall(lookup, "iris_metal_renderEncoder_setBlendColor",
+        renderEncoderSetBlendColor = downcall(lookup, "metallum_renderEncoder_setBlendColor",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, FLOAT, FLOAT, FLOAT, FLOAT));
-        renderEncoderSetColorWriteMask = downcall(lookup, "iris_metal_renderEncoder_setColorWriteMask",
+        renderEncoderSetColorWriteMask = downcall(lookup, "metallum_renderEncoder_setColorWriteMask",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT));
-        renderEncoderDrawPrimitives = downcall(lookup, "iris_metal_renderEncoder_drawPrimitives",
+        renderEncoderDrawPrimitives = downcall(lookup, "metallum_renderEncoder_drawPrimitives",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, LONG, LONG, LONG));
-        renderEncoderDrawIndexedPrimitives = downcall(lookup, "iris_metal_renderEncoder_drawIndexedPrimitives",
+        renderEncoderDrawIndexedPrimitives = downcall(lookup, "metallum_renderEncoder_drawIndexedPrimitives",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, ValueLayout.ADDRESS, LONG, LONG, LONG));
-        renderEncoderDrawPrimitivesInstanced = downcall(lookup, "iris_metal_renderEncoder_drawPrimitivesInstanced",
+        renderEncoderDrawPrimitivesInstanced = downcall(lookup, "metallum_renderEncoder_drawPrimitivesInstanced",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, LONG, LONG, LONG, LONG));
-        renderEncoderDrawIndexedPrimitivesInstanced = downcall(lookup, "iris_metal_renderEncoder_drawIndexedPrimitivesInstanced",
+        renderEncoderDrawIndexedPrimitivesInstanced = downcall(lookup, "metallum_renderEncoder_drawIndexedPrimitivesInstanced",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, INT, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
 
         // Compute
-        computeEncoderSetComputePipelineState = downcall(lookup, "iris_metal_computeEncoder_setComputePipelineState",
+        computeEncoderSetComputePipelineState = downcall(lookup, "metallum_computeEncoder_setComputePipelineState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        computeEncoderSetBuffer = downcall(lookup, "iris_metal_computeEncoder_setBuffer",
+        computeEncoderSetBuffer = downcall(lookup, "metallum_computeEncoder_setBuffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, INT));
-        computeEncoderSetTexture = downcall(lookup, "iris_metal_computeEncoder_setTexture",
+        computeEncoderSetTexture = downcall(lookup, "metallum_computeEncoder_setTexture",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        computeEncoderSetSamplerState = downcall(lookup, "iris_metal_computeEncoder_setSamplerState",
+        computeEncoderSetSamplerState = downcall(lookup, "metallum_computeEncoder_setSamplerState",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, INT));
-        computeEncoderDispatchThreadgroups = downcall(lookup, "iris_metal_computeEncoder_dispatchThreadgroups",
+        computeEncoderDispatchThreadgroups = downcall(lookup, "metallum_computeEncoder_dispatchThreadgroups",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG));
 
         // DepthStencil
-        makeDepthStencilState = downcall(lookup, "iris_metal_MTLDevice_makeDepthStencilState",
+        makeDepthStencilState = downcall(lookup, "metallum_MTLDevice_makeDepthStencilState",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, INT, INT, INT, INT, INT, INT, INT, INT));
 
         // Sampler
-        makeSamplerState = downcall(lookup, "iris_metal_MTLDevice_makeSamplerState",
+        makeSamplerState = downcall(lookup, "metallum_MTLDevice_makeSamplerState",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, INT, INT, INT, INT, INT, INT, FLOAT, FLOAT, FLOAT, FLOAT, INT, INT));
 
         // Blit
-        blitCopyBufferToBuffer = downcall(lookup, "iris_metal_blitEncoder_copyBufferToBuffer",
+        blitCopyBufferToBuffer = downcall(lookup, "metallum_blitEncoder_copyBufferToBuffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS, LONG, LONG));
-        blitCopyBufferToTexture = downcall(lookup, "iris_metal_blitEncoder_copyBufferToTexture",
+        blitCopyBufferToTexture = downcall(lookup, "metallum_blitEncoder_copyBufferToTexture",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG));
-        blitCopyTextureToTexture = downcall(lookup, "iris_metal_blitEncoder_copyTextureToTexture",
+        blitCopyTextureToTexture = downcall(lookup, "metallum_blitEncoder_copyTextureToTexture",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG));
-        blitCopyTextureToBuffer = downcall(lookup, "iris_metal_blitEncoder_copyTextureToBuffer",
+        blitCopyTextureToBuffer = downcall(lookup, "metallum_blitEncoder_copyTextureToBuffer",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG, LONG));
-        blitGenerateMipmaps = downcall(lookup, "iris_metal_blitEncoder_generateMipmaps",
+        blitGenerateMipmaps = downcall(lookup, "metallum_blitEncoder_generateMipmaps",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
         // SPIRV-Cross shader 编译
-        compileGlslToMsl = downcall(lookup, "iris_metal_compile_glsl_to_msl",
+        compileGlslToMsl = downcall(lookup, "metallum_compile_glsl_to_msl",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        getCompiledMslSource = downcall(lookup, "iris_metal_get_compiled_msl_source",
+        getCompiledMslSource = downcall(lookup, "metallum_get_compiled_msl_source",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        getCompiledMslError = downcall(lookup, "iris_metal_get_compiled_msl_error",
+        getCompiledMslError = downcall(lookup, "metallum_get_compiled_msl_error",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-        freeCompiledShader = downcall(lookup, "iris_metal_free_compiled_shader",
+        freeCompiledShader = downcall(lookup, "metallum_free_compiled_shader",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
     }
 
