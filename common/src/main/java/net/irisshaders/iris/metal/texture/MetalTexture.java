@@ -73,8 +73,9 @@ public final class MetalTexture implements AutoCloseable {
         this.type = type;
 
         // MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite | MTLTextureUsageRenderTarget
-        int usage = 0x1 | 0x2 | 0x4;
-        // MTLStorageModePrivate - GPU 私有内存，性能最佳，数据上传通过 blit encoder
+        // iOS Metal 只支持有限的 usage 值
+        int usage = 0x1; // 只使用 ShaderRead，避免 renderTarget 问题
+        // MTLStorageModePrivate - GPU 私有内存
         int storageMode = 0; // Private
 
         switch (type) {
