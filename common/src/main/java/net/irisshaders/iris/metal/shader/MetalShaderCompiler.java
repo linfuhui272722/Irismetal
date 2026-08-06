@@ -220,7 +220,7 @@ public final class MetalShaderCompiler {
         }
 
         // Vulkan GLSL 要求 non-opaque uniform 必须在 uniform block 中
-        // 为每个顶层 uniform 创建一个单独的 block
+        // 我们采用另一种方式：把所有顶层 uniform 放到一个统一的 block 中
         
         // 首先收集所有顶层 uniform
         List<String> topLevelUniforms = new ArrayList<>();
@@ -254,42 +254,37 @@ public final class MetalShaderCompiler {
             filteredSource.append(line).append("\n");
         }
         
-        // 为每个顶层 uniform 创建单独的 block
+        // 为所有顶层 uniform 创建一个统一的 block
         if (!topLevelUniforms.isEmpty()) {
-            StringBuilder newBlocks = new StringBuilder();
-            int counter = 0;
+            StringBuilder block = new StringBuilder();
+            block.append("layout(std140) uniform iris_VertexUniforms {\n");
             for (String uniform : topLevelUniforms) {
-                String[] parts = uniform.split("\\s+");
-                String uniformType = parts[0];
-                String uniformName = parts[1];
-                
-                // Block 类型名和实例名使用不同的名字避免冲突
-                // 使用带数字后缀的名称确保唯一性
-                String blockTypeName = "iris_UniformBlock" + counter;
-                String blockVarName = "iris_" + uniformName;
-                
-                newBlocks.append("layout(std140) uniform ").append(blockTypeName).append(" {\n");
-                newBlocks.append("    ").append(uniformType).append(" ").append(uniformName).append(";\n");
-                newBlocks.append("} ").append(blockVarName).append(";\n\n");
-                
-                Iris.logger.info("[Iris-Metal] Created block: layout(std140) uniform {} {{ {} {}; }} {};",
-                    blockTypeName, uniformType, uniformName, blockVarName);
-                counter++;
+                block.append("    ").append(uniform).append(";\n");
             }
+            block.append("};\n\n");
             
             // 在第一个 uniform block 之前插入
             String filtered = filteredSource.toString();
             int insertPos = filtered.indexOf("layout(std140) uniform");
             if (insertPos > 0) {
-                result = filtered.substring(0, insertPos) + newBlocks.toString() + filtered.substring(insertPos);
+                result = filtered.substring(0, insertPos) + block.toString() + filtered.substring(insertPos);
             } else {
                 // 在 #version 之后插入
                 int versionEnd = filtered.indexOf("\n", filtered.indexOf("#version"));
                 if (versionEnd > 0) {
-                    result = filtered.substring(0, versionEnd + 1) + newBlocks.toString() + filtered.substring(versionEnd + 1);
+                    result = filtered.substring(0, versionEnd + 1) + block.toString() + filtered.substring(versionEnd + 1);
                 } else {
-                    result = newBlocks.toString() + filtered;
+                    result = block.toString() + filtered;
                 }
+            }
+            
+            // 替换 shader 中对这些 uniform 的引用
+            for (String uniform : topLevelUniforms) {
+                String[] parts = uniform.split("\\s+");
+                String uniformName = parts[1];
+                // 替换 "uniformName" -> "iris_VertexUniforms.uniformName"
+                result = result.replaceAll("\\b" + uniformName + "\\b", "iris_VertexUniforms." + uniformName);
+                Iris.logger.info("[Iris-Metal] Replacing {} -> iris_VertexUniforms.{}", uniformName, uniformName);
             }
         } else {
             result = filteredSource.toString();
