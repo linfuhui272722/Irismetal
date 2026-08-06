@@ -644,13 +644,6 @@ public class Iris {
 			return new VanillaRenderingPipeline();
 		}
 
-		// Metal backend 模式下，由 metallum 处理 shader 编译和渲染
-		// Iris 不创建 OpenGL pipeline，避免在没有 GL 上下文时崩溃
-		if (IrisRenderSystem.isUsingMetalBackend()) {
-			logger.info("Metal backend active, using vanilla pipeline for now");
-			return new VanillaRenderingPipeline();
-		}
-
 		ProgramSet programs = currentPack.getProgramSet(dimensionId);
 
 		// We use DeferredWorldRenderingPipeline on 1.16, and NewWorldRendering pipeline on 1.17 when rendering shaders.
