@@ -41,6 +41,14 @@ public class IrisMetalClientInit implements ClientModInitializer {
                     LOGGER.info("[Iris-Metal] Metallum is loaded, delegating Metal rendering to metallum");
                     return;
                 }
+            } else if (osName.contains("Mac")) {
+                // macOS 或 iOS（osName = "Mac OS X"）
+                // 检查 metallum 是否已加载
+                LOGGER.info("[Iris-Metal] Running on macOS/iOS, checking for metallum...");
+                if (isMetallumLoaded()) {
+                    LOGGER.info("[Iris-Metal] Metallum is loaded, delegating Metal rendering to metallum");
+                    return;
+                }
             }
             
             // 尝试加载原生库
