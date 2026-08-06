@@ -52,11 +52,7 @@ public class IrisRenderSystem {
          * 注意：这个方法不依赖任何 Iris 类，只使用标准 Java API。
          */
         public static boolean isUsingMetalBackend() {
-                if (metalModeChecked) {
-                        return isUsingMetal;
-                }
-                
-                // 首先尝试反射获取 IrisMixinPlugin 的值
+                // 首先尝试反射获取 IrisMixinPlugin 的值（最可靠）
                 try {
                         Class<?> mixinPluginClass = Class.forName("net.irisshaders.iris.mixin.IrisMixinPlugin");
                         java.lang.reflect.Field usingMetalField = mixinPluginClass.getDeclaredField("usingMetal");
@@ -71,6 +67,11 @@ public class IrisRenderSystem {
                         }
                 } catch (Throwable e) {
                         // 反射失败，继续尝试其他方法
+                }
+                
+                // 如果已经检查过且确定不是 Metal，直接返回
+                if (metalModeChecked) {
+                        return isUsingMetal;
                 }
                 
                 // 尝试直接读取 options.txt 文件
