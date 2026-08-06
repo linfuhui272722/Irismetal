@@ -18,6 +18,7 @@ val PARCHMENT_VERSION by extra { null }
 
 // https://semver.org/
 val MOD_VERSION by extra { "1.11.4" }
+val LWJGL_VERSION by extra { "3.3.4" }
 
 allprojects {
     apply(plugin = "java")

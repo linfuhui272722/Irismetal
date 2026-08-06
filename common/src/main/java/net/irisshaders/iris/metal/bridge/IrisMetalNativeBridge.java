@@ -4,6 +4,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.metal.IrisMetalDevice;
+import net.irisshaders.iris.metal.shader.SPIRVToMslConverter;
 import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
@@ -1221,8 +1222,16 @@ public final class IrisMetalNativeBridge {
      * @return 编译结果句柄，通过 {@link #getCompiledMslSource} 获取 MSL 源码
      */
     // 简化的compileGlslToMsl版本（接受byte数组）
+    // 现在使用 SPIRVToMslConverter
     public static MemorySegment compileGlslToMsl(byte[] spirv, int spirvLength, int stage, int mslVersion) {
-        // 简化实现：返回NULL表示编译失败
+        try {
+            String msl = SPIRVToMslConverter.convert(spirv, mslVersion);
+            if (msl != null && !msl.isEmpty()) {
+                return allocateUtf8String(Arena.ofAuto(), msl);
+            }
+        } catch (Exception e) {
+            Iris.logger.warn("SPIRV-Cross compilation failed: " + e.getMessage());
+        }
         return MemorySegment.NULL;
     }
 

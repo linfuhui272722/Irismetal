@@ -88,20 +88,12 @@ public final class MetalShaderCompiler {
             return CompileResult.failure("GLSL→SPIRV failed for " + name + ": " + e.getMessage());
         }
 
-        // 步骤 2：SPIR-V → MSL（通过 native bridge 调用 SPIRV-Cross）
+        // 步骤 2：SPIR-V → MSL（使用 LWJGL SPIRV-Cross）
         try {
-            MemorySegment compiled = IrisMetalNativeBridge.compileGlslToMsl(
-                    spirv, spirv.length, toMslShaderStage(type), MSL_VERSION_3_0);
-            if (IrisMetalNativeBridge.isNullHandle(compiled)) {
-                return CompileResult.failure("SPIRV-Cross returned null for " + name);
+            String msl = SPIRVToMslConverter.convert(spirv, MSL_VERSION_3_0);
+            if (msl == null || msl.isEmpty()) {
+                return CompileResult.failure("SPIRV-Cross returned empty MSL for " + name);
             }
-            String error = IrisMetalNativeBridge.getCompiledMslError(compiled);
-            if (error != null && !error.isEmpty()) {
-                IrisMetalNativeBridge.freeCompiledShader(compiled);
-                return CompileResult.failure("SPIRV-Cross error for " + name + ": " + error);
-            }
-            String msl = IrisMetalNativeBridge.getCompiledMslSource(compiled);
-            IrisMetalNativeBridge.freeCompiledShader(compiled);
             return CompileResult.success(msl);
         } catch (Throwable t) {
             return CompileResult.failure("SPIRV-Cross invocation failed for " + name + ": " + t.getMessage());

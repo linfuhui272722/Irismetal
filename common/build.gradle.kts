@@ -81,6 +81,9 @@ dependencies {
     // Metallum - 同时添加主 jar 和 sources jar
     compileOnly(files("libs/metallum-0.0.21.jar"))
     compileOnly(files("libs/metallum-0.0.21-sources.jar"))
+
+    // LWJGL SPIRV-Cross binding for Metal shader compilation
+    implementation("org.lwjgl:lwjgl-spvc:${rootProject.extra["LWJGL_VERSION"]}")
 }
 
 afterEvaluate {
