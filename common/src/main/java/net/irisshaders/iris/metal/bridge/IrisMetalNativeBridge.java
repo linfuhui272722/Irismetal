@@ -404,6 +404,19 @@ public final class IrisMetalNativeBridge {
         return handle == null || handle.address() == 0;
     }
 
+    // 检查可选功能是否可用
+    public static boolean isTexture3DAvailable() {
+        return createTexture3D != null;
+    }
+
+    public static boolean isTextureCubeAvailable() {
+        return createTextureCube != null;
+    }
+
+    public static boolean isComputePipelineAvailable() {
+        return compileComputePipeline != null;
+    }
+
     // 辅助方法：分配UTF-8字符串到内存段 (Java 22+兼容)
     private static MemorySegment allocateUtf8String(Arena arena, String str) {
         byte[] bytes = str.getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -591,7 +604,7 @@ public final class IrisMetalNativeBridge {
     public static MemorySegment createTexture3D(MemorySegment device, int pixelFormat, long width, long height,
                                                  long depth, long mipLevels, int usage, int storageMode, String label) {
         if (createTexture3D == null) {
-            throw new UnsupportedOperationException("3D textures are not supported on this platform");
+            return MemorySegment.NULL;  // 返回 NULL 而不是抛异常，让调用者处理
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment labelSeg = allocateUtf8String(arena, label);
@@ -604,7 +617,7 @@ public final class IrisMetalNativeBridge {
     public static MemorySegment createTextureCube(MemorySegment device, int pixelFormat, long size, long mipLevels,
                                                    int usage, int storageMode, String label) {
         if (createTextureCube == null) {
-            throw new UnsupportedOperationException("Cube textures are not supported on this platform");
+            return MemorySegment.NULL;  // 返回 NULL 而不是抛异常，让调用者处理
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment labelSeg = allocateUtf8String(arena, label);
@@ -701,7 +714,7 @@ public final class IrisMetalNativeBridge {
 
     public static MemorySegment compileComputePipeline(MemorySegment device, String mslSource, String functionName, String label) {
         if (compileComputePipeline == null) {
-            throw new UnsupportedOperationException("Compute pipelines are not supported on this platform");
+            return MemorySegment.NULL;  // 返回 NULL 而不是抛异常，让调用者处理
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment src = allocateUtf8String(arena, mslSource);
