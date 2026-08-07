@@ -128,22 +128,28 @@ public final class MetalShaderCompiler {
      */
     private static byte[] compileGlslToSpirv(String name, ShaderType type, String glslSource) throws Exception {
         // 适配 GLSL 为 Vulkan 风格
+        Iris.logger.info("[Iris-Metal] About to adapt GLSL for {}, input length = {}", name, glslSource.length());
         String vulkanGlsl = adaptGlslForVulkan(glslSource, type);
+        Iris.logger.info("[Iris-Metal] GLSL adapted for {}, output length = {}", name, vulkanGlsl.length());
 
         // 获取 shaderc 的 shader kind
         int shadercKind = getShadercKind(type);
 
         // 初始化 shaderc
+        Iris.logger.info("[Iris-Metal] Initializing shaderc compiler for {}", name);
         long compiler = Shaderc.shaderc_compiler_initialize();
         if (compiler == 0) {
             throw new Exception("Failed to initialize shaderc compiler for " + name);
         }
+        Iris.logger.info("[Iris-Metal] Shaderc compiler initialized for {}", name);
 
+        Iris.logger.info("[Iris-Metal] Initializing shaderc options for {}", name);
         long options = Shaderc.shaderc_compile_options_initialize();
         if (options == 0) {
             Shaderc.shaderc_compiler_release(compiler);
             throw new Exception("Failed to initialize shaderc options for " + name);
         }
+        Iris.logger.info("[Iris-Metal] Shaderc options initialized for {}", name);
 
         try {
             // 设置目标环境为 Vulkan
@@ -156,9 +162,11 @@ public final class MetalShaderCompiler {
             Shaderc.shaderc_compile_options_set_auto_map_locations(options, true);
 
             // 编译 GLSL 到 SPIR-V
+            Iris.logger.info("[Iris-Metal] About to compile GLSL to SPIR-V for {}, GLSL length = {}", name, vulkanGlsl.length());
             long result = Shaderc.shaderc_compile_into_spv(
                 compiler, vulkanGlsl, shadercKind, name, "main", options
             );
+            Iris.logger.info("[Iris-Metal] SPIR-V compilation completed for {}, checking status...", name);
 
             try {
                 int status = Shaderc.shaderc_result_get_compilation_status(result);
@@ -175,6 +183,8 @@ public final class MetalShaderCompiler {
 
                 byte[] spirv = new byte[bytes.remaining()];
                 bytes.get(spirv);
+                Iris.logger.info("[Iris-Metal] SPIR-V generated for {}: {} bytes ({} words)", 
+                    name, spirv.length, spirv.length / 4);
                 return spirv;
             } finally {
                 Shaderc.shaderc_result_release(result);
@@ -218,9 +228,23 @@ public final class MetalShaderCompiler {
         // 收集所有 loose uniform 并创建 MetallumIrisUniforms block
         result = wrapLooseUniforms(result);
         
-        // 打印转换后的 shader 预览
-        String shaderPreview = result.substring(0, Math.min(1500, result.length())).replace("\n", "\\n");
-        Iris.logger.info("[Iris-Metal] Adapted shader preview: {}", shaderPreview);
+        // 打印转换后的 shader 预览（增加长度，并写入文件以避免日志截断）
+        int previewLength = Math.min(3000, result.length());
+        String shaderPreview = result.substring(0, previewLength).replace("\n", "\\n");
+        Iris.logger.info("[Iris-Metal] Adapted shader preview (first {} of {} chars): {}", 
+            previewLength, result.length(), shaderPreview);
+        
+        // 写入完整 shader 到文件以便调试
+        try {
+            String fileName = "iris_debug_shader_" + System.currentTimeMillis() + ".txt";
+            java.nio.file.Files.write(
+                java.nio.file.Paths.get(fileName),
+                result.getBytes()
+            );
+            Iris.logger.info("[Iris-Metal] Full shader written to: {}", fileName);
+        } catch (Exception e) {
+            Iris.logger.warn("[Iris-Metal] Failed to write shader file: {}", e.getMessage());
+        }
 
         return result;
     }
@@ -237,6 +261,7 @@ public final class MetalShaderCompiler {
         StringBuilder body = new StringBuilder();
         String[] lines = source.split("\n");
         int braceDepth = 0;
+        boolean hasExistingMetallumBlock = source.contains("uniform MetallumIrisUniforms");
         
         // 遍历每一行，收集 loose uniform
         for (int i = 0; i < lines.length; i++) {
@@ -261,6 +286,7 @@ public final class MetalShaderCompiler {
                         Iris.logger.info("[Iris-Metal] Keeping sampler uniform: {}", uniformDecl);
                     } else {
                         // non-opaque 类型放入 block
+                        // 不添加到这个 body 中，因为我们会把它们移到 UBO 中
                         blockUniforms.add(uniformDecl);
                         Iris.logger.info("[Iris-Metal] Found block uniform: {}", uniformDecl);
                     }
@@ -271,24 +297,166 @@ public final class MetalShaderCompiler {
             body.append(line).append("\n");
         }
         
-        // 如果没有 block uniform，直接返回
+        // 如果已经存在 MetallumIrisUniforms block，直接返回
+        if (hasExistingMetallumBlock) {
+            Iris.logger.info("[Iris-Metal] MetallumIrisUniforms block already exists, skipping uniform wrapping");
+            return source;
+        }
+        
+        // 如果没有 block uniform，也直接返回
         if (blockUniforms.isEmpty()) {
             return source;
         }
         
         // 创建 MetallumIrisUniforms block
         StringBuilder block = new StringBuilder();
-        block.append("layout(std140) uniform MetallumIrisUniforms {\n");
+        block.append("\nlayout(std140) uniform MetallumIrisUniforms {\n");
         for (String uniform : blockUniforms) {
             block.append("    ").append(uniform).append(";\n");
         }
-        block.append("};\n\n");
+        block.append("} iris_uniforms;\n\n");
         
         // 在 directive prelude 之后插入 block
         String shaderBody = body.toString();
         int insertPos = findDirectivePreludeEnd(shaderBody);
         
-        return shaderBody.substring(0, insertPos) + block.toString() + shaderBody.substring(insertPos);
+        // 确保 insertPos 位置之前有换行符（以便 block 能正确地从新行开始）
+        String prefix = shaderBody.substring(0, insertPos);
+        if (!prefix.endsWith("\n")) {
+            prefix += "\n";
+            insertPos = insertPos + 1; // adjust since we added a character
+        }
+        
+        String result = prefix + block.toString() + shaderBody.substring(insertPos);
+        
+        // 替换 shader body 中对 loose uniform 的直接引用为 iris_uniforms.xxx
+        // 注意：只有在 UBO block 之后的位置才需要替换
+        for (String uniformDecl : blockUniforms) {
+            // uniformDecl 格式是 "类型 名称" 或 "类型 名称[数组大小]"
+            String[] parts = uniformDecl.trim().split("\\s+");
+            if (parts.length >= 2) {
+                String varName = parts[parts.length - 1];
+                // 移除数组大小后缀 [x]
+                if (varName.contains("[")) {
+                    varName = varName.substring(0, varName.indexOf("["));
+                }
+                
+                // 在 UBO block 之后的 shader 代码中替换变量引用
+                // UBO block 格式: "\nlayout(...) uniform MetallumIrisUniforms {\n    ...\n} iris_uniforms;\n\n"
+                // 找到 "} iris_uniforms;" 所在行的行尾（换行符位置）
+                String uboEndMarker = "} iris_uniforms;";
+                int uboEndPos = result.indexOf(uboEndMarker);
+                if (uboEndPos == -1) {
+                    Iris.logger.warn("[Iris-Metal] UBO end marker not found for {}", varName);
+                    continue;
+                }
+                // 找到该行之后的第一个换行符（即下一行的开始）
+                int uboEndLinePos = result.indexOf("\n", uboEndPos);
+                if (uboEndLinePos == -1) {
+                    uboEndLinePos = result.length();
+                } else {
+                    uboEndLinePos++; // 跳过换行符
+                }
+                
+                String uboBlock = result.substring(0, uboEndLinePos);
+                String shaderCode = result.substring(uboEndLinePos);
+                
+                // 在 shaderCode 中查找并替换
+                Iris.logger.info("[Iris-Metal] Before replace: shaderCode length = {}, contains {} = {}", 
+                    shaderCode.length(), varName, countOccurrences(shaderCode, varName));
+                
+                // 调试：检查 shaderCode 的内容
+                if (shaderCode.length() > 0) {
+                    boolean hasSunPath = shaderCode.contains("sunPathRotation");
+                    boolean hasMain = shaderCode.contains("void main()");
+                    boolean hasConst = shaderCode.contains("const float");
+                    Iris.logger.info("[Iris-Metal] shaderCode check: has sunPathRotation={}, has main()={}, has const={}, starts with newline={}", 
+                        hasSunPath, hasMain, hasConst, shaderCode.charAt(0) == '\n');
+                    // 打印 shaderCode 的前 200 字符（用 \\n 替换换行符以便日志显示）
+                    int printLen = Math.min(200, shaderCode.length());
+                    String head = shaderCode.substring(0, printLen).replace("\n", "\\n").replace("\r", "\\r");
+                    Iris.logger.info("[Iris-Metal] shaderCode head (first {}): [{}]", printLen, head);
+                } else {
+                    Iris.logger.warn("[Iris-Metal] shaderCode is EMPTY!");
+                }
+                
+                String newShaderCode = replaceInShaderCode(shaderCode, varName);
+                
+                int replaceCount = countOccurrences(shaderCode, varName) - countOccurrences(newShaderCode, varName);
+                if (replaceCount > 0) {
+                    Iris.logger.info("[Iris-Metal] Replaced {} occurrences of {}", replaceCount, varName);
+                }
+                
+                result = uboBlock + newShaderCode;
+            }
+        }
+        
+        // 调试：打印完整结果的最后 1500 字符（用 \\n 替换换行符以便日志显示）
+        if (result.length() > 1500) {
+            String tail = result.substring(result.length() - 1500).replace("\n", "\\n").replace("\r", "\\r");
+            Iris.logger.info("[Iris-Metal] Result last 1500 chars (newlines replaced): [{}]", tail);
+        } else {
+            String fullResult = result.replace("\n", "\\n").replace("\r", "\\r");
+            Iris.logger.info("[Iris-Metal] Complete result (newlines replaced): [{}]", fullResult);
+        }
+        
+        return result;
+    }
+    
+    /**
+     * 计算字符串中某个子串出现的次数
+     */
+    private static int countOccurrences(String str, String sub) {
+        int count = 0;
+        int idx = 0;
+        while ((idx = str.indexOf(sub, idx)) != -1) {
+            count++;
+            idx += sub.length();
+        }
+        return count;
+    }
+    
+    /**
+     * 在 shader 代码中替换 uniform 变量引用
+     * 只替换不在 uniform 声明行中的引用
+     * 使用简单的字符串替换，但确保只替换完整的单词
+     */
+    private static String replaceInShaderCode(String shaderCode, String varName) {
+        // 简单的正则表达式替换：\bvarName\b 但排除 uniform 声明行
+        // 我们逐行处理
+        StringBuilder result = new StringBuilder();
+        String[] lines = shaderCode.split("\n", -1);
+        
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            
+            // 检查是否是 uniform 声明行
+            String trimmedLine = line.trim();
+            if (trimmedLine.startsWith("uniform ") || trimmedLine.startsWith("layout(")) {
+                // uniform 声明行，跳过
+                result.append(line);
+            } else {
+                // 替换行中的变量引用（确保是完整单词）
+                line = replaceWordInLine(line, varName);
+                result.append(line);
+            }
+            
+            if (i < lines.length - 1) {
+                result.append("\n");
+            }
+        }
+        
+        return result.toString();
+    }
+    
+    /**
+     * 在一行代码中替换变量名（确保是完整单词）
+     */
+    private static String replaceWordInLine(String line, String varName) {
+        // 使用正则表达式匹配完整单词
+        // 单词边界：前面不是字母、数字、下划线，后面也不是
+        String pattern = "(?<![\\w])" + varName + "(?![\\w])";
+        return line.replaceAll(pattern, "iris_uniforms." + varName);
     }
     
     /**

@@ -1550,15 +1550,19 @@ public final class IrisMetalNativeBridge {
     // ===== Shader/Pipeline编译方法 =====
     public static MemorySegment compileMslToLibrary(MemorySegment device, String mslSource, String label) {
         if (createShaderFunction == null || isNullHandle(device)) {
+            Iris.logger.warn("[Iris-Metal] compileMslToLibrary: createShaderFunction is null or device is null");
             return MemorySegment.NULL;
         }
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment source = allocateUtf8String( mslSource);
-            MemorySegment entry = allocateUtf8String( "main0");
+        try {
+            Iris.logger.info("[Iris-Metal] compileMslToLibrary: MSL source length = {}, label = {}", mslSource.length(), label);
+            MemorySegment source = allocateUtf8String(mslSource);
+            MemorySegment entry = allocateUtf8String("main0");
+            Iris.logger.info("[Iris-Metal] compileMslToLibrary: Calling metallum_create_shader_function...");
             MemorySegment function = (MemorySegment) createShaderFunction.invoke(device, source, entry);
+            Iris.logger.info("[Iris-Metal] compileMslToLibrary: metallum_create_shader_function returned");
             return function;
         } catch (Throwable t) {
-            Iris.logger.warn("Failed to compile MSL to library: " + label, t);
+            Iris.logger.error("[Iris-Metal] Failed to compile MSL to library: " + label, t);
             return MemorySegment.NULL;
         }
     }

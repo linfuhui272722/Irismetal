@@ -45,48 +45,83 @@ public final class SPIRVToMslConverter {
      * @return MSL 源码，如果转换失败返回 null
      */
     public static String convert(ByteBuffer spirv, int mslVersion) {
+        Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: input spirv buffer - isDirect={}, position={}, limit={}, capacity={}, order={}", 
+            spirv.isDirect(), spirv.position(), spirv.limit(), spirv.capacity(), spirv.order());
+        
         try (var stack = org.lwjgl.system.MemoryStack.stackPush()) {
+            // 确保 buffer 的位置是 0
+            spirv.position(0);
             IntBuffer spirvWords = spirv.asIntBuffer();
+            int wordCount = spirvWords.remaining();
+            Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: spirvWords - position={}, remaining={}, wordCount={}", 
+                spirvWords.position(), spirvWords.remaining(), wordCount);
+            
+            // 验证 SPIR-V header
+            if (wordCount < 5) {
+                Iris.logger.warn("SPIR-V buffer too small: {} words (minimum 5)", wordCount);
+                return null;
+            }
+            
+            // 检查 SPIR-V magic number (0x07230203)
+            int magic = spirvWords.get(0);
+            Iris.logger.info("[Iris-Metal] SPIR-V magic number: 0x{}", String.format("%08x", magic));
+            if (magic != 0x07230203) {
+                Iris.logger.warn("Invalid SPIR-V magic number: 0x{} (expected 0x07230203)", String.format("%08x", magic));
+            }
             
             // 创建 context
+            Iris.logger.info("[Iris-Metal] About to create SPIRV-Cross context...");
             PointerBuffer pContext = stack.mallocPointer(1);
+            Iris.logger.info("[Iris-Metal] Calling spvc_context_create...");
             int result = Spvc.spvc_context_create(pContext);
+            Iris.logger.info("[Iris-Metal] spvc_context_create returned: {}", result);
             if (result != Spvc.SPVC_SUCCESS) {
                 Iris.logger.warn("Failed to create SPIRV-Cross context: {}", result);
                 return null;
             }
             long context = pContext.get(0);
+            Iris.logger.info("[Iris-Metal] Context created, context={}", context);
             
             try {
                 // 解析 SPIR-V
                 PointerBuffer pIr = stack.mallocPointer(1);
+                Iris.logger.info("[Iris-Metal] About to call spvc_context_parse_spirv with {} words...", spirvWords.remaining());
                 result = Spvc.spvc_context_parse_spirv(context, spirvWords, spirvWords.remaining(), pIr);
+                Iris.logger.info("[Iris-Metal] spvc_context_parse_spirv returned: {}", result);
                 if (result != Spvc.SPVC_SUCCESS) {
                     Iris.logger.warn("Failed to parse SPIR-V: {}", result);
                     return null;
                 }
                 long ir = pIr.get(0);
+                Iris.logger.info("[Iris-Metal] SPIR-V parsed, ir={}", ir);
                 
                 // 创建 MSL 编译器
                 PointerBuffer pCompiler = stack.mallocPointer(1);
+                Iris.logger.info("[Iris-Metal] About to call spvc_context_create_compiler with MSL backend...");
                 result = Spvc.spvc_context_create_compiler(context, Spvc.SPVC_BACKEND_MSL, ir, Spvc.SPVC_CAPTURE_MODE_COPY, pCompiler);
+                Iris.logger.info("[Iris-Metal] spvc_context_create_compiler returned: {}", result);
                 if (result != Spvc.SPVC_SUCCESS) {
                     Iris.logger.warn("Failed to create MSL compiler: {}", result);
                     return null;
                 }
                 long compiler = pCompiler.get(0);
+                Iris.logger.info("[Iris-Metal] MSL compiler created, compiler={}", compiler);
                 
                 try {
                     // 创建选项
                     PointerBuffer pOptions = stack.mallocPointer(1);
+                    Iris.logger.info("[Iris-Metal] About to call spvc_compiler_create_compiler_options...");
                     result = Spvc.spvc_compiler_create_compiler_options(compiler, pOptions);
+                    Iris.logger.info("[Iris-Metal] spvc_compiler_create_compiler_options returned: {}", result);
                     if (result != Spvc.SPVC_SUCCESS) {
                         Iris.logger.warn("Failed to create compiler options: {}", result);
                         return null;
                     }
                     long options = pOptions.get(0);
+                    Iris.logger.info("[Iris-Metal] Options created, options={}", options);
                     
                     // 设置 MSL 选项
+                    Iris.logger.info("[Iris-Metal] Setting MSL options: platform=MACOS, version={}", mslVersion > 0 ? mslVersion : MSL_VERSION_3_0);
                     Spvc.spvc_compiler_options_set_uint(options, Spvc.SPVC_COMPILER_OPTION_MSL_PLATFORM, Spvc.SPVC_MSL_PLATFORM_MACOS);
                     Spvc.spvc_compiler_options_set_uint(options, Spvc.SPVC_COMPILER_OPTION_MSL_VERSION, mslVersion > 0 ? mslVersion : MSL_VERSION_3_0);
                     Spvc.spvc_compiler_options_set_bool(options, Spvc.SPVC_COMPILER_OPTION_MSL_ENABLE_DECORATION_BINDING, true);
@@ -94,35 +129,46 @@ public final class SPIRVToMslConverter {
                     Spvc.spvc_compiler_options_set_bool(options, Spvc.SPVC_COMPILER_OPTION_FLIP_VERTEX_Y, true);
                     
                     // 安装选项
+                    Iris.logger.info("[Iris-Metal] About to call spvc_compiler_install_compiler_options...");
                     result = Spvc.spvc_compiler_install_compiler_options(compiler, options);
+                    Iris.logger.info("[Iris-Metal] spvc_compiler_install_compiler_options returned: {}", result);
                     if (result != Spvc.SPVC_SUCCESS) {
                         Iris.logger.warn("Failed to install compiler options: {}", result);
                         return null;
                     }
                     
                     // 获取活跃的接口变量
+                    Iris.logger.info("[Iris-Metal] About to call spvc_compiler_get_active_interface_variables...");
                     PointerBuffer pActiveSet = stack.mallocPointer(1);
                     result = Spvc.spvc_compiler_get_active_interface_variables(compiler, pActiveSet);
+                    Iris.logger.info("[Iris-Metal] spvc_compiler_get_active_interface_variables returned: {}", result);
                     if (result == Spvc.SPVC_SUCCESS) {
                         Spvc.spvc_compiler_set_enabled_interface_variables(compiler, pActiveSet.get(0));
                     }
                     
                     // 编译
+                    Iris.logger.info("[Iris-Metal] About to call spvc_compiler_compile...");
                     PointerBuffer pSource = stack.mallocPointer(1);
                     result = Spvc.spvc_compiler_compile(compiler, pSource);
+                    Iris.logger.info("[Iris-Metal] spvc_compiler_compile returned: {}", result);
                     if (result != Spvc.SPVC_SUCCESS) {
                         Iris.logger.warn("Failed to compile: {}", result);
                         return null;
                     }
                     
                     long sourcePtr = pSource.get(0);
+                    Iris.logger.info("[Iris-Metal] sourcePtr = {}", sourcePtr);
                     // 使用 safe copy - 分配一个临时的 Java 字符串而不是依赖 native 指针
                     if (sourcePtr == 0) {
+                        Iris.logger.warn("sourcePtr is 0, returning null");
                         return null;
                     }
                     // 使用 memUTF8 带最大长度限制，避免读取越界
                     // 限制为 1MB 应该足够
-                    return org.lwjgl.system.MemoryUtil.memUTF8(sourcePtr, 1024 * 1024);
+                    Iris.logger.info("[Iris-Metal] About to call memUTF8 with sourcePtr={}...", sourcePtr);
+                    String msl = org.lwjgl.system.MemoryUtil.memUTF8(sourcePtr, 1024 * 1024);
+                    Iris.logger.info("[Iris-Metal] memUTF8 completed, MSL length={}", msl != null ? msl.length() : -1);
+                    return msl;
                     
                 } finally {
                     Spvc.spvc_context_destroy(context);
@@ -138,7 +184,18 @@ public final class SPIRVToMslConverter {
      * 将 SPIR-V 字节数组转换为 MSL 源码。
      */
     public static String convert(byte[] spirv, int mslVersion) {
-        return convert(ByteBuffer.wrap(spirv), mslVersion);
+        // 使用直接的 ByteBuffer（与 vanilla Minecraft 一致）
+        // MemoryUtil.memAlloc 分配 native 内存，比 ByteBuffer.wrap() 更可靠
+        ByteBuffer directBuffer = org.lwjgl.system.MemoryUtil.memAlloc(spirv.length)
+            .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        directBuffer.put(spirv);
+        directBuffer.flip();
+        try {
+            return convert(directBuffer, mslVersion);
+        } finally {
+            // 释放 native 内存
+            org.lwjgl.system.MemoryUtil.memFree(directBuffer);
+        }
     }
     
     /**

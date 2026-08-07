@@ -2,6 +2,7 @@ package net.irisshaders.iris.metal.program;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.gl.shader.ShaderType;
 import net.irisshaders.iris.metal.IrisMetalDevice;
 import net.irisshaders.iris.metal.blending.MetalBlendState;
@@ -113,7 +114,10 @@ public final class MetalCompiledProgram implements AutoCloseable {
             if (!vr.isSuccess()) {
                 throw new RuntimeException("Vertex shader compilation failed: " + (vr.getError() != null ? vr.getError() : "unknown error"));
             }
+            Iris.logger.info("[Iris-Metal] MSL compilation succeeded for {}, MSL length={}", name + ".vsh", vr.getMslSource().length());
+            Iris.logger.info("[Iris-Metal] About to call compileMslToLibrary for {}", name + ".vsh");
             vertexFunction = IrisMetalNativeBridge.compileMslToLibrary(deviceHandle, vr.getMslSource(), name + ".vsh");
+            Iris.logger.info("[Iris-Metal] compileMslToLibrary returned for {}", name + ".vsh");
             if (IrisMetalNativeBridge.isNullHandle(vertexFunction)) {
                 throw new RuntimeException("Failed to compile vertex MSL to MTLLibrary: " + name);
             }
@@ -128,7 +132,10 @@ public final class MetalCompiledProgram implements AutoCloseable {
                 if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
                 throw new RuntimeException("Fragment shader compilation failed: " + (fr.getError() != null ? fr.getError() : "unknown error"));
             }
+            Iris.logger.info("[Iris-Metal] MSL compilation succeeded for {}, MSL length={}", name + ".fsh", fr.getMslSource().length());
+            Iris.logger.info("[Iris-Metal] About to call compileMslToLibrary for {}", name + ".fsh");
             fragmentFunction = IrisMetalNativeBridge.compileMslToLibrary(deviceHandle, fr.getMslSource(), name + ".fsh");
+            Iris.logger.info("[Iris-Metal] compileMslToLibrary returned for {}", name + ".fsh");
             if (IrisMetalNativeBridge.isNullHandle(fragmentFunction)) {
                 if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
                 throw new RuntimeException("Failed to compile fragment MSL to MTLLibrary: " + name);
