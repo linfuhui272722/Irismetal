@@ -341,14 +341,18 @@ public final class MetalShaderCompiler {
                 Iris.logger.info("[Iris-Metal] Before replace: shaderCode length = {}, contains {} = {}", 
                     shaderCode.length(), varName, countOccurrences(shaderCode, varName));
                 
-                // 调试：打印 shaderCode 的前 300 字符
-                if (shaderCode.length() > 300) {
-                    Iris.logger.info("[Iris-Metal] shaderCode head: {}", shaderCode.substring(0, 300));
-                }
-                
-                // 调试：打印 shaderCode 的最后 300 字符
-                if (shaderCode.length() > 300) {
-                    Iris.logger.info("[Iris-Metal] shaderCode tail: {}", shaderCode.substring(shaderCode.length() - 300));
+                // 调试：检查 shaderCode 的内容
+                if (shaderCode.length() > 0) {
+                    char firstChar = shaderCode.charAt(0);
+                    char lastChar = shaderCode.charAt(shaderCode.length() - 1);
+                    Iris.logger.info("[Iris-Metal] shaderCode: first='{}', last='{}', contains sunPathRotation={}", 
+                        String.valueOf(firstChar), String.valueOf(lastChar), 
+                        shaderCode.contains("sunPathRotation"));
+                    // 打印 shaderCode 的前 100 字符
+                    int printLen = Math.min(100, shaderCode.length());
+                    Iris.logger.info("[Iris-Metal] shaderCode first {} chars: [{}]", printLen, shaderCode.substring(0, printLen));
+                } else {
+                    Iris.logger.warn("[Iris-Metal] shaderCode is EMPTY!");
                 }
                 
                 String newShaderCode = replaceInShaderCode(shaderCode, varName);
