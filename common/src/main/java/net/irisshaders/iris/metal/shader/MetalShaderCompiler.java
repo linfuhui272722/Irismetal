@@ -298,6 +298,7 @@ public final class MetalShaderCompiler {
         String result = shaderBody.substring(0, insertPos) + block.toString() + shaderBody.substring(insertPos);
         
         // 替换 shader body 中对 loose uniform 的直接引用为 iris_uniforms.xxx
+        // 注意：只有在 UBO block 之后的位置才需要替换
         for (String uniformDecl : blockUniforms) {
             // uniformDecl 格式是 "类型 名称" 或 "类型 名称[数组大小]"
             String[] parts = uniformDecl.trim().split("\\s+");
@@ -308,21 +309,27 @@ public final class MetalShaderCompiler {
                     varName = varName.substring(0, varName.indexOf("["));
                 }
                 
-                // 调试：打印替换前的 shader 片段
-                int countBefore = countOccurrences(result, varName);
-                Iris.logger.info("[Iris-Metal] Before replace: found {} occurrences of {} in shader", countBefore, varName);
+                // 找到 UBO block 的结束位置
+                int uboEndLine = result.indexOf("} iris_uniforms;");
+                if (uboEndLine == -1) {
+                    Iris.logger.warn("[Iris-Metal] UBO end marker not found for {}", varName);
+                    continue;
+                }
+                int uboEndPos = result.indexOf("\n", uboEndLine);
+                if (uboEndPos == -1) uboEndPos = result.length();
                 
-                // 调试：打印包含这个变量的行
-                for (String line : result.split("\n")) {
-                    if (line.contains(varName)) {
-                        Iris.logger.info("[Iris-Metal]   Line with {}: {}", varName, line.trim().substring(0, Math.min(100, line.trim().length())));
-                    }
+                // 在 UBO block 之后的 shader 代码中替换变量引用
+                String uboBlock = result.substring(0, uboEndPos);
+                String shaderCode = result.substring(uboEndPos);
+                
+                // 在 shaderCode 中查找并替换
+                String newShaderCode = replaceInShaderCode(shaderCode, varName);
+                int replaceCount = countOccurrences(shaderCode, varName) - countOccurrences(newShaderCode, varName);
+                if (replaceCount > 0) {
+                    Iris.logger.info("[Iris-Metal] Replaced {} occurrences of {} in shader body", replaceCount, varName);
                 }
                 
-                result = replaceUniformReference(result, varName);
-                
-                int countAfter = countOccurrences(result, varName);
-                Iris.logger.info("[Iris-Metal] After replace: found {} occurrences of {}", countAfter, varName);
+                result = uboBlock + newShaderCode;
             }
         }
         
@@ -343,111 +350,81 @@ public final class MetalShaderCompiler {
     }
     
     /**
-     * 替换 shader 代码中对 uniform 变量的直接引用为 block 实例成员访问
-     * 只替换 uniform 声明和 UBO 成员声明之外的引用
+     * 在 shader 代码中替换 uniform 变量引用
+     * 只替换不在 uniform 声明行中的引用
      */
-    private static String replaceUniformReference(String source, String varName) {
-        // 首先找到 UBO block 的起始标记
-        int uboHeaderStart = source.indexOf("layout(std140) uniform MetallumIrisUniforms {");
-        if (uboHeaderStart == -1) {
-            Iris.logger.warn("[Iris-Metal] UBO header not found for {}", varName);
-            return source;
-        }
-        
-        // 找到 UBO block 的结束括号位置（使用括号匹配）
-        int braceStart = source.indexOf("{", uboHeaderStart);
-        if (braceStart == -1) {
-            Iris.logger.warn("[Iris-Metal] UBO opening brace not found for {}", varName);
-            return source;
-        }
-        
-        // 匹配括号找到结束位置
-        int braceEnd = findMatchingBrace(source, braceStart);
-        if (braceEnd == -1) {
-            Iris.logger.warn("[Iris-Metal] UBO closing brace not found for {}", varName);
-            return source;
-        }
-        
-        // UBO block 范围是从 { 到 }（包含括号）
-        // 注意：UBO block 内部的成员声明不需要替换
-        // 我们只需要替换 block 外部的引用
-        
-        // 在整个 source 中查找 varName，但跳过 UBO block 内部和 uniform 声明行
+    private static String replaceInShaderCode(String shaderCode, String varName) {
         StringBuilder result = new StringBuilder();
         int searchFrom = 0;
-        int replaceCount = 0;
         
         while (true) {
-            int found = source.indexOf(varName, searchFrom);
+            int found = shaderCode.indexOf(varName, searchFrom);
             if (found == -1) {
-                result.append(source.substring(searchFrom));
+                result.append(shaderCode.substring(searchFrom));
                 break;
             }
             
             // 检查是否是有效的单词边界
             if (found > 0) {
-                char prev = source.charAt(found - 1);
+                char prev = shaderCode.charAt(found - 1);
                 if (Character.isLetterOrDigit(prev) || prev == '_') {
                     searchFrom = found + 1;
                     continue;
                 }
             }
-            if (found + varName.length() < source.length()) {
-                char next = source.charAt(found + varName.length());
+            if (found + varName.length() < shaderCode.length()) {
+                char next = shaderCode.charAt(found + varName.length());
                 if (Character.isLetterOrDigit(next) || next == '_') {
                     searchFrom = found + 1;
                     continue;
                 }
             }
             
-            // 检查是否在 UBO block 内部
-            if (found > braceStart && found < braceEnd) {
-                // 在 UBO block 的大括号内部，不要替换
-                searchFrom = found + 1;
-                continue;
-            }
-            
-            // 检查这行是否是 uniform 声明（以 "uniform " 开头）
-            int lineStart = source.lastIndexOf('\n', found);
+            // 检查这行是否是 uniform 声明（从行首到变量名之前都是 whitespace 或 layout）
+            int lineStart = shaderCode.lastIndexOf('\n', found);
             if (lineStart < 0) lineStart = 0;
             else lineStart++;
-            String lineBeforeVar = source.substring(lineStart, found).trim();
+            String lineContent = shaderCode.substring(lineStart, found);
             
-            if (lineBeforeVar.startsWith("uniform ")) {
-                // 这可能是 uniform 声明行，不要替换
+            // 检查行内容是否包含 uniform 关键字
+            // uniform 声明的格式是 "uniform type name;" 或 "layout(...) uniform type name;"
+            boolean isUniformDeclaration = false;
+            int layoutPos = lineContent.indexOf("layout(");
+            int uniformPos = lineContent.indexOf("uniform ");
+            
+            if (uniformPos >= 0) {
+                // 找到 uniform，检查它后面是否是类型名和变量名
+                String afterUniform = lineContent.substring(uniformPos + 8).trim();
+                // 检查 afterUniform 是否以变量名开头或包含空格后跟变量名
+                if (afterUniform.startsWith(varName) || 
+                    (afterUniform.contains(" ") && afterUniform.substring(afterUniform.indexOf(" ") + 1).trim().startsWith(varName))) {
+                    isUniformDeclaration = true;
+                }
+            } else if (layoutPos >= 0) {
+                // 检查 layout(...) 后面的内容是否是 uniform 声明
+                int afterLayout = lineContent.indexOf("}", layoutPos);
+                if (afterLayout >= 0) {
+                    String afterBrace = lineContent.substring(afterLayout + 1).trim();
+                    if (afterBrace.startsWith("uniform ")) {
+                        isUniformDeclaration = true;
+                    }
+                }
+            }
+            
+            if (isUniformDeclaration) {
+                // uniform 声明行，不要替换
                 searchFrom = found + 1;
                 continue;
             }
             
             // 替换这个引用
-            result.append(source.substring(searchFrom, found));
+            result.append(shaderCode.substring(searchFrom, found));
             result.append("iris_uniforms.");
             result.append(varName);
             searchFrom = found + varName.length();
-            replaceCount++;
-        }
-        
-        if (replaceCount > 0) {
-            Iris.logger.info("[Iris-Metal] replaceUniformReference: replaced {} occurrences of {}", replaceCount, varName);
         }
         
         return result.toString();
-    }
-    
-    /**
-     * 找到匹配的右括号位置
-     */
-    private static int findMatchingBrace(String source, int openBrace) {
-        int depth = 1;
-        for (int i = openBrace + 1; i < source.length(); i++) {
-            char c = source.charAt(i);
-            if (c == '{') depth++;
-            else if (c == '}') {
-                depth--;
-                if (depth == 0) return i;
-            }
-        }
-        return -1;
     }
     
     /**
