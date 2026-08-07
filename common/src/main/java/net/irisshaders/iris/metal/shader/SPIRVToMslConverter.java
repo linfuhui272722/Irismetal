@@ -70,18 +70,24 @@ public final class SPIRVToMslConverter {
             }
             
             // 创建 context
+            Iris.logger.info("[Iris-Metal] About to create SPIRV-Cross context...");
             PointerBuffer pContext = stack.mallocPointer(1);
+            Iris.logger.info("[Iris-Metal] Calling spvc_context_create...");
             int result = Spvc.spvc_context_create(pContext);
+            Iris.logger.info("[Iris-Metal] spvc_context_create returned: {}", result);
             if (result != Spvc.SPVC_SUCCESS) {
                 Iris.logger.warn("Failed to create SPIRV-Cross context: {}", result);
                 return null;
             }
             long context = pContext.get(0);
+            Iris.logger.info("[Iris-Metal] Context created, context={}", context);
             
             try {
                 // 解析 SPIR-V
                 PointerBuffer pIr = stack.mallocPointer(1);
+                Iris.logger.info("[Iris-Metal] About to call spvc_context_parse_spirv with {} words...", spirvWords.remaining());
                 result = Spvc.spvc_context_parse_spirv(context, spirvWords, spirvWords.remaining(), pIr);
+                Iris.logger.info("[Iris-Metal] spvc_context_parse_spirv returned: {}", result);
                 if (result != Spvc.SPVC_SUCCESS) {
                     Iris.logger.warn("Failed to parse SPIR-V: {}", result);
                     return null;
