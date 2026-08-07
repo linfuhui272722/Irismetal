@@ -237,6 +237,7 @@ public final class MetalShaderCompiler {
         StringBuilder body = new StringBuilder();
         String[] lines = source.split("\n");
         int braceDepth = 0;
+        boolean hasExistingMetallumBlock = source.contains("uniform MetallumIrisUniforms");
         
         // 遍历每一行，收集 loose uniform
         for (int i = 0; i < lines.length; i++) {
@@ -271,8 +272,11 @@ public final class MetalShaderCompiler {
             body.append(line).append("\n");
         }
         
-        // 如果没有 block uniform，直接返回
-        if (blockUniforms.isEmpty()) {
+        // 如果没有 block uniform，或者已经存在 MetallumIrisUniforms block，直接返回
+        if (blockUniforms.isEmpty() || hasExistingMetallumBlock) {
+            if (hasExistingMetallumBlock) {
+                Iris.logger.info("[Iris-Metal] MetallumIrisUniforms block already exists, skipping block creation");
+            }
             return source;
         }
         
