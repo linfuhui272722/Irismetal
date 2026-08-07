@@ -109,52 +109,70 @@ public final class MetalCompiledProgram implements AutoCloseable {
         // 1. 编译 vertex shader
         MemorySegment vertexFunction = MemorySegment.NULL;
         if (vertexSource != null) {
-            MetalShaderCompiler.CompileResult vr = MetalShaderCompiler.compileGlslToMsl(
-                    name + ".vsh", ShaderType.VERTEX, vertexSource);
-            if (!vr.isSuccess()) {
-                throw new RuntimeException("Vertex shader compilation failed: " + (vr.getError() != null ? vr.getError() : "unknown error"));
-            }
-            Iris.logger.info("[Iris-Metal] MSL compilation succeeded for {}, MSL length={}", name + ".vsh", vr.getMslSource().length());
-            Iris.logger.info("[Iris-Metal] About to call compileMslToLibrary for {}", name + ".vsh");
-            vertexFunction = IrisMetalNativeBridge.compileMslToLibrary(deviceHandle, vr.getMslSource(), name + ".vsh");
-            Iris.logger.info("[Iris-Metal] compileMslToLibrary returned for {}", name + ".vsh");
-            if (IrisMetalNativeBridge.isNullHandle(vertexFunction)) {
-                throw new RuntimeException("Failed to compile vertex MSL to MTLLibrary: " + name);
+            Iris.logger.info("[Iris-Metal] Starting vertex shader compilation for {}", name);
+            try {
+                MetalShaderCompiler.CompileResult vr = MetalShaderCompiler.compileGlslToMsl(
+                        name + ".vsh", ShaderType.VERTEX, vertexSource);
+                if (!vr.isSuccess()) {
+                    throw new RuntimeException("Vertex shader compilation failed: " + (vr.getError() != null ? vr.getError() : "unknown error"));
+                }
+                Iris.logger.info("[Iris-Metal] MSL compilation succeeded for {}, MSL length={}", name + ".vsh", vr.getMslSource().length());
+                Iris.logger.info("[Iris-Metal] About to call compileMslToLibrary for {}", name + ".vsh");
+                vertexFunction = IrisMetalNativeBridge.compileMslToLibrary(deviceHandle, vr.getMslSource(), name + ".vsh");
+                Iris.logger.info("[Iris-Metal] compileMslToLibrary returned for {}", name + ".vsh");
+                if (IrisMetalNativeBridge.isNullHandle(vertexFunction)) {
+                    throw new RuntimeException("Failed to compile vertex MSL to MTLLibrary: " + name);
+                }
+            } catch (Exception e) {
+                Iris.logger.error("[Iris-Metal] Vertex shader compilation error for {}: {}", name, e.getMessage(), e);
+                throw e;
             }
         }
 
         // 2. 编译 fragment shader
         MemorySegment fragmentFunction = MemorySegment.NULL;
         if (fragmentSource != null) {
-            MetalShaderCompiler.CompileResult fr = MetalShaderCompiler.compileGlslToMsl(
-                    name + ".fsh", ShaderType.FRAGMENT, fragmentSource);
-            if (!fr.isSuccess()) {
+            Iris.logger.info("[Iris-Metal] Starting fragment shader compilation for {}", name);
+            try {
+                MetalShaderCompiler.CompileResult fr = MetalShaderCompiler.compileGlslToMsl(
+                        name + ".fsh", ShaderType.FRAGMENT, fragmentSource);
+                if (!fr.isSuccess()) {
+                    if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
+                    throw new RuntimeException("Fragment shader compilation failed: " + (fr.getError() != null ? fr.getError() : "unknown error"));
+                }
+                Iris.logger.info("[Iris-Metal] MSL compilation succeeded for {}, MSL length={}", name + ".fsh", fr.getMslSource().length());
+                Iris.logger.info("[Iris-Metal] About to call compileMslToLibrary for {}", name + ".fsh");
+                fragmentFunction = IrisMetalNativeBridge.compileMslToLibrary(deviceHandle, fr.getMslSource(), name + ".fsh");
+                Iris.logger.info("[Iris-Metal] compileMslToLibrary returned for {}", name + ".fsh");
+                if (IrisMetalNativeBridge.isNullHandle(fragmentFunction)) {
+                    if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
+                    throw new RuntimeException("Failed to compile fragment MSL to MTLLibrary: " + name);
+                }
+            } catch (Exception e) {
+                Iris.logger.error("[Iris-Metal] Fragment shader compilation error for {}: {}", name, e.getMessage(), e);
                 if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
-                throw new RuntimeException("Fragment shader compilation failed: " + (fr.getError() != null ? fr.getError() : "unknown error"));
-            }
-            Iris.logger.info("[Iris-Metal] MSL compilation succeeded for {}, MSL length={}", name + ".fsh", fr.getMslSource().length());
-            Iris.logger.info("[Iris-Metal] About to call compileMslToLibrary for {}", name + ".fsh");
-            fragmentFunction = IrisMetalNativeBridge.compileMslToLibrary(deviceHandle, fr.getMslSource(), name + ".fsh");
-            Iris.logger.info("[Iris-Metal] compileMslToLibrary returned for {}", name + ".fsh");
-            if (IrisMetalNativeBridge.isNullHandle(fragmentFunction)) {
-                if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
-                throw new RuntimeException("Failed to compile fragment MSL to MTLLibrary: " + name);
+                throw e;
             }
         }
 
         // 3. 创建 pipeline descriptor 并设置参数
+        Iris.logger.info("[Iris-Metal] Creating pipeline descriptor for {}", name);
         MemorySegment pipelineDescriptor = IrisMetalNativeBridge.createRenderPipelineDescriptor();
         
         if (IrisMetalNativeBridge.isNullHandle(pipelineDescriptor)) {
+            Iris.logger.error("[Iris-Metal] Failed to create pipeline descriptor for {}", name);
             if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
             if (!IrisMetalNativeBridge.isNullHandle(fragmentFunction)) IrisMetalNativeBridge.releaseObject(fragmentFunction);
             throw new RuntimeException("Failed to create render pipeline descriptor: " + name);
         }
+        Iris.logger.info("[Iris-Metal] Pipeline descriptor created for {}", name);
 
         // 设置 vertex 和 fragment functions（一起设置，因为 metallum 的 setCompiledFunctions 需要两个参数）
+        Iris.logger.info("[Iris-Metal] Setting vertex/fragment functions for {}", name);
         IrisMetalNativeBridge.setPipelineVertexFunction(pipelineDescriptor, vertexFunction, fragmentFunction);
 
         // 设置颜色附件格式和 blend state
+        Iris.logger.info("[Iris-Metal] Setting color attachments for {}", name);
         for (int i = 0; i < colorFormats.length; i++) {
             if (colorFormats[i] != 0) {
                 IrisMetalNativeBridge.setPipelineColorAttachment(
@@ -171,23 +189,37 @@ public final class MetalCompiledProgram implements AutoCloseable {
 
         // 设置深度附件格式
         if (depthFormat != 0) {
+            Iris.logger.info("[Iris-Metal] Setting depth attachment format {} for {}", depthFormat, name);
             IrisMetalNativeBridge.setPipelineDepthAttachmentPixelFormat(pipelineDescriptor, depthFormat);
         }
 
         // 设置 vertex descriptor
         if (vertexDescriptor != null) {
+            Iris.logger.info("[Iris-Metal] Setting vertex descriptor for {}", name);
             IrisMetalNativeBridge.setPipelineVertexDescriptor(pipelineDescriptor, vertexDescriptor.handle());
         }
 
         // 4. 创建 pipeline state
-        MemorySegment pipelineState = IrisMetalNativeBridge.newRenderPipelineState(deviceHandle, pipelineDescriptor);
+        Iris.logger.info("[Iris-Metal] Creating pipeline state for {}", name);
+        MemorySegment pipelineState;
+        try {
+            pipelineState = IrisMetalNativeBridge.newRenderPipelineState(deviceHandle, pipelineDescriptor);
+        } catch (Exception e) {
+            Iris.logger.error("[Iris-Metal] Exception while creating pipeline state for {}: {}", name, e.getMessage(), e);
+            IrisMetalNativeBridge.releaseObject(pipelineDescriptor);
+            if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
+            if (!IrisMetalNativeBridge.isNullHandle(fragmentFunction)) IrisMetalNativeBridge.releaseObject(fragmentFunction);
+            throw e;
+        }
         IrisMetalNativeBridge.releaseObject(pipelineDescriptor);
 
         if (IrisMetalNativeBridge.isNullHandle(pipelineState)) {
+            Iris.logger.error("[Iris-Metal] Pipeline state is null for {}", name);
             if (!IrisMetalNativeBridge.isNullHandle(vertexFunction)) IrisMetalNativeBridge.releaseObject(vertexFunction);
             if (!IrisMetalNativeBridge.isNullHandle(fragmentFunction)) IrisMetalNativeBridge.releaseObject(fragmentFunction);
             throw new RuntimeException("Failed to create render pipeline state: " + name);
         }
+        Iris.logger.info("[Iris-Metal] Pipeline state created successfully for {}", name);
 
         // 5. 创建 uniform/sampler/image 管理器
         // 注意：这些需要在 pipeline 创建后通过 reflection 获取 binding 信息

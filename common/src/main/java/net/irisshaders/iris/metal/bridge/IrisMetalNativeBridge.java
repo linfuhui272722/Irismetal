@@ -1553,17 +1553,32 @@ public final class IrisMetalNativeBridge {
             Iris.logger.warn("[Iris-Metal] compileMslToLibrary: createShaderFunction is null or device is null");
             return MemorySegment.NULL;
         }
+        
+        MemorySegment source = MemorySegment.NULL;
+        MemorySegment entry = MemorySegment.NULL;
+        
         try {
             Iris.logger.info("[Iris-Metal] compileMslToLibrary: MSL source length = {}, label = {}", mslSource.length(), label);
-            MemorySegment source = allocateUtf8String(mslSource);
-            MemorySegment entry = allocateUtf8String("main0");
+            
+            // 分配字符串内存
+            try {
+                source = allocateUtf8String(mslSource);
+                entry = allocateUtf8String("main0");
+            } catch (Exception e) {
+                Iris.logger.error("[Iris-Metal] Failed to allocate strings for MSL: {}", e.getMessage());
+                return MemorySegment.NULL;
+            }
+            
             Iris.logger.info("[Iris-Metal] compileMslToLibrary: Calling metallum_create_shader_function...");
             MemorySegment function = (MemorySegment) createShaderFunction.invoke(device, source, entry);
-            Iris.logger.info("[Iris-Metal] compileMslToLibrary: metallum_create_shader_function returned");
+            Iris.logger.info("[Iris-Metal] compileMslToLibrary: metallum_create_shader_function returned, isNull={}", isNullHandle(function));
             return function;
         } catch (Throwable t) {
             Iris.logger.error("[Iris-Metal] Failed to compile MSL to library: " + label, t);
             return MemorySegment.NULL;
+        } finally {
+            // 释放临时字符串内存（但保留 function 句柄）
+            // 注意：source 和 entry 的内存会在 Arena 清理时自动释放
         }
     }
 

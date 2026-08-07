@@ -299,7 +299,70 @@ public class IrisMetalRenderingPipeline implements WorldRenderingPipeline, Shade
             LOGGER.debug("[Iris-Metal] No shadow composite shader in pack");
             return;
         }
-        // Shadow compilation deferred to render time
+        
+        // Compile shadow composite shaders
+        for (int i = 0; i < sources.length; i++) {
+            ProgramSource source = sources[i];
+            if (source == null || source.getVertexSource().isEmpty()) {
+                continue;
+            }
+            
+            String passName = source.getName();
+            
+            try {
+                LOGGER.info("[Iris-Metal] Compiling shadow composite shader: {}", passName);
+                
+                MetalVertexDescriptor vertexDesc = FULLSCREEN_VERTEX;
+                MetalBlendState blendState = createBlendState(source);
+                
+                int[] colorFormats = new int[8];
+                for (int j = 0; j < 8; j++) {
+                    if (gbuffersColorTextures[j] != null) {
+                        colorFormats[j] = gbuffersColorTextures[j].mtlPixelFormat();
+                    }
+                }
+                
+                // Transform shader sources using TransformPatcher
+                TextureStage stage = TextureStage.SHADOWCOMP;
+                Object2ObjectMap<Tri<String, net.irisshaders.iris.gl.texture.TextureType, TextureStage>, String> textureMap = 
+                    programSet.getPackDirectives().getTextureMap();
+                Map<PatchShaderType, String> transformed = TransformPatcher.patchComposite(
+                    passName,
+                    source.getVertexSource().orElse(""),
+                    null, // geometry
+                    source.getFragmentSource().orElse(""),
+                    stage,
+                    textureMap
+                );
+                
+                String vertexSource = transformed.get(PatchShaderType.VERTEX);
+                String fragmentSource = transformed.get(PatchShaderType.FRAGMENT);
+                
+                MetalCompiledProgram program = MetalCompiledProgram.create(
+                    passName,
+                    vertexSource,
+                    fragmentSource,
+                    null,
+                    vertexDesc,
+                    colorFormats,
+                    0,
+                    new MetalBlendState[]{blendState}
+                );
+                
+                // Set shadowProgram for the first valid shadow shader
+                if (this.shadowProgram == null) {
+                    this.shadowProgram = program;
+                    LOGGER.info("[Iris-Metal] Shadow program set to: {}", passName);
+                }
+                
+                compositePrograms.put(passName, program);
+                programs.put(passName, program);
+                
+                LOGGER.info("[Iris-Metal] Shadow composite shader compiled successfully: {}", passName);
+            } catch (Exception e) {
+                LOGGER.warn("[Iris-Metal] Failed to compile shadow composite shader {}: {}", passName, e.getMessage());
+            }
+        }
     }
     
     private void compileGbufferShaders() {
