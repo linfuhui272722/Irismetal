@@ -1684,12 +1684,29 @@ public final class IrisMetalNativeBridge {
     }
 
     public static MemorySegment newRenderPipelineState(MemorySegment device, MemorySegment descriptor) {
-        if (compileRenderPipeline == null || isNullHandle(device) || isNullHandle(descriptor)) {
+        if (compileRenderPipeline == null) {
+            Iris.logger.error("[Iris-Metal] newRenderPipelineState: compileRenderPipeline is null");
+            return MemorySegment.NULL;
+        }
+        if (isNullHandle(device)) {
+            Iris.logger.error("[Iris-Metal] newRenderPipelineState: device is null");
+            return MemorySegment.NULL;
+        }
+        if (isNullHandle(descriptor)) {
+            Iris.logger.error("[Iris-Metal] newRenderPipelineState: descriptor is null");
             return MemorySegment.NULL;
         }
         try {
-            return (MemorySegment) compileRenderPipeline.invoke(device, descriptor);
+            Iris.logger.info("[Iris-Metal] newRenderPipelineState: Calling native function...");
+            MemorySegment result = (MemorySegment) compileRenderPipeline.invoke(device, descriptor);
+            if (isNullHandle(result)) {
+                Iris.logger.error("[Iris-Metal] newRenderPipelineState: native returned NULL");
+            } else {
+                Iris.logger.info("[Iris-Metal] newRenderPipelineState: success, handle={}", result.address());
+            }
+            return result;
         } catch (Throwable t) {
+            Iris.logger.error("[Iris-Metal] newRenderPipelineState: native threw exception", t);
             throw new RuntimeException("Failed to create render pipeline state", t);
         }
     }
