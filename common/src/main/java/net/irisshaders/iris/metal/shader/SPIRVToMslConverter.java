@@ -45,8 +45,16 @@ public final class SPIRVToMslConverter {
      * @return MSL 源码，如果转换失败返回 null
      */
     public static String convert(ByteBuffer spirv, int mslVersion) {
+        Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: input spirv buffer - position={}, limit={}, capacity={}", 
+            spirv.position(), spirv.limit(), spirv.capacity());
+        
         try (var stack = org.lwjgl.system.MemoryStack.stackPush()) {
+            // 确保 buffer 的位置是 0
+            spirv.position(0);
             IntBuffer spirvWords = spirv.asIntBuffer();
+            int wordCount = spirvWords.remaining();
+            Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: spirvWords - position={}, remaining={}, wordCount={}", 
+                spirvWords.position(), spirvWords.remaining(), wordCount);
             
             // 创建 context
             PointerBuffer pContext = stack.mallocPointer(1);

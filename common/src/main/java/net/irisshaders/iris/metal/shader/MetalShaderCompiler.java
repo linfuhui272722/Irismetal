@@ -183,6 +183,8 @@ public final class MetalShaderCompiler {
 
                 byte[] spirv = new byte[bytes.remaining()];
                 bytes.get(spirv);
+                Iris.logger.info("[Iris-Metal] SPIR-V generated for {}: {} bytes ({} words)", 
+                    name, spirv.length, spirv.length / 4);
                 return spirv;
             } finally {
                 Shaderc.shaderc_result_release(result);
