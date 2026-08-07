@@ -128,22 +128,28 @@ public final class MetalShaderCompiler {
      */
     private static byte[] compileGlslToSpirv(String name, ShaderType type, String glslSource) throws Exception {
         // 适配 GLSL 为 Vulkan 风格
+        Iris.logger.info("[Iris-Metal] About to adapt GLSL for {}, input length = {}", name, glslSource.length());
         String vulkanGlsl = adaptGlslForVulkan(glslSource, type);
+        Iris.logger.info("[Iris-Metal] GLSL adapted for {}, output length = {}", name, vulkanGlsl.length());
 
         // 获取 shaderc 的 shader kind
         int shadercKind = getShadercKind(type);
 
         // 初始化 shaderc
+        Iris.logger.info("[Iris-Metal] Initializing shaderc compiler for {}", name);
         long compiler = Shaderc.shaderc_compiler_initialize();
         if (compiler == 0) {
             throw new Exception("Failed to initialize shaderc compiler for " + name);
         }
+        Iris.logger.info("[Iris-Metal] Shaderc compiler initialized for {}", name);
 
+        Iris.logger.info("[Iris-Metal] Initializing shaderc options for {}", name);
         long options = Shaderc.shaderc_compile_options_initialize();
         if (options == 0) {
             Shaderc.shaderc_compiler_release(compiler);
             throw new Exception("Failed to initialize shaderc options for " + name);
         }
+        Iris.logger.info("[Iris-Metal] Shaderc options initialized for {}", name);
 
         try {
             // 设置目标环境为 Vulkan
@@ -156,9 +162,11 @@ public final class MetalShaderCompiler {
             Shaderc.shaderc_compile_options_set_auto_map_locations(options, true);
 
             // 编译 GLSL 到 SPIR-V
+            Iris.logger.info("[Iris-Metal] About to compile GLSL to SPIR-V for {}, GLSL length = {}", name, vulkanGlsl.length());
             long result = Shaderc.shaderc_compile_into_spv(
                 compiler, vulkanGlsl, shadercKind, name, "main", options
             );
+            Iris.logger.info("[Iris-Metal] SPIR-V compilation completed for {}, checking status...", name);
 
             try {
                 int status = Shaderc.shaderc_result_get_compilation_status(result);
