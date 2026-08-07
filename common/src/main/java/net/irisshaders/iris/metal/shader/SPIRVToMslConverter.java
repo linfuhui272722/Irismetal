@@ -22,20 +22,17 @@ public final class SPIRVToMslConverter {
     static {
         // 确保 metallum 配置了 SPIR-V 到 MSL 的库
         // metallum 会在 onPreLaunch 时调用 ensureSpvcLibraryConfigured()
-        // 但如果我们的代码在 metallum 初始化之前运行，需要手动配置
+        // 我们只需要确保 Spvc 类在 metallum 配置之后加载
         try {
             Class<?> metalNativeBridge = Class.forName("com.metallum.client.metal.render.bridge.MetalNativeBridge");
             java.lang.reflect.Method ensureMethod = metalNativeBridge.getMethod("ensureSpvcLibraryConfigured");
             ensureMethod.invoke(null);
             
-            // 确保 Spvc 类在 ensureSpvcLibraryConfigured() 之后才加载
-            // 这样可以确保使用 metallum 配置的 SPIRV-Cross 库
-            // 在 iOS 上，metallum 会设置 Configuration.SPVC_LIBRARY_NAME
-            // Spvc 类初始化时会读取这个配置
+            // 加载 Spvc 类 - 这会触发类初始化，Spvc.SPVC static 字段会加载 native 库
+            // 由于 ensureSpvcLibraryConfigured() 已经设置好了 Configuration.SPVC_LIBRARY_NAME，
+            // Spvc 类会加载 metallum 的 libspvc_metallum.dylib
             Class<?> spvcClass = Class.forName("org.lwjgl.util.spvc.Spvc");
-            // 访问 Spvc.SPVC 字段来触发类初始化
-            spvcClass.getField("SPIRV_MAGIC");
-            Iris.logger.info("[Iris-Metal] Spvc class loaded after ensureSpvcLibraryConfigured()");
+            Iris.logger.info("[Iris-Metal] Spvc class loaded successfully");
         } catch (ClassNotFoundException e) {
             // metallum 未安装，SPIR-V 到 MSL 转换不可用
             Iris.logger.warn("Metallum not found, SPIR-V to MSL conversion unavailable");
