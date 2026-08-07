@@ -360,62 +360,70 @@ public final class MetalShaderCompiler {
             return source;
         }
         
-        // 查找所有 varName 的出现位置
+        // UBO block 范围需要包含到行尾
+        int uboEndLine = source.indexOf("\n", uboEnd);
+        if (uboEndLine == -1) uboEndLine = source.length();
+        
+        String prefix = source.substring(0, uboEndLine);
+        String suffix = source.substring(uboEndLine);
+        
+        // 在 prefix 中查找 UBO block 内部的 uniform 声明行
+        // 这些行以 "    type name;" 格式存在
+        String uboBlock = source.substring(uboStart, uboEndLine);
+        
+        // 在 prefix 中（UBO 之前）替换变量引用
+        // 找出 prefix 中所有不在 uniform 声明行中的引用
         StringBuilder result = new StringBuilder();
-        int lastIndex = 0;
-        int searchIndex = 0;
+        String prefixToSearch = prefix;
+        
+        int searchFrom = 0;
         int replaceCount = 0;
         
         while (true) {
-            int found = source.indexOf(varName, searchIndex);
+            int found = prefixToSearch.indexOf(varName, searchFrom);
             if (found == -1) {
-                result.append(source.substring(lastIndex));
+                result.append(prefixToSearch.substring(searchFrom));
                 break;
             }
             
             // 检查是否是有效的单词边界
             if (found > 0) {
-                char prev = source.charAt(found - 1);
+                char prev = prefixToSearch.charAt(found - 1);
                 if (Character.isLetterOrDigit(prev) || prev == '_') {
-                    searchIndex = found + 1;
+                    searchFrom = found + 1;
                     continue;
                 }
             }
-            if (found + varName.length() < source.length()) {
-                char next = source.charAt(found + varName.length());
+            if (found + varName.length() < prefixToSearch.length()) {
+                char next = prefixToSearch.charAt(found + varName.length());
                 if (Character.isLetterOrDigit(next) || next == '_') {
-                    searchIndex = found + 1;
+                    searchFrom = found + 1;
                     continue;
                 }
-            }
-            
-            // 检查是否在 UBO block 内部
-            if (found > uboStart && found < uboEnd) {
-                // 在 UBO 成员声明中，不要替换
-                searchIndex = found + 1;
-                continue;
             }
             
             // 检查这行是否是 uniform 声明（以 "uniform " 开头）
-            int lineStart = source.lastIndexOf('\n', found);
+            int lineStart = prefixToSearch.lastIndexOf('\n', found);
             if (lineStart < 0) lineStart = 0;
             else lineStart++;
-            String lineBeforeVar = source.substring(lineStart, found).trim();
+            String lineBeforeVar = prefixToSearch.substring(lineStart, found).trim();
             
             if (lineBeforeVar.startsWith("uniform ")) {
                 // 这可能是 uniform 声明行，不要替换
-                searchIndex = found + 1;
+                searchFrom = found + 1;
                 continue;
             }
             
             // 替换这个引用
-            result.append(source.substring(lastIndex, found));
+            result.append(prefixToSearch.substring(searchFrom, found));
             result.append("iris_uniforms.");
             result.append(varName);
-            lastIndex = found + varName.length();
-            searchIndex = lastIndex;
+            searchFrom = found + varName.length();
             replaceCount++;
         }
+        
+        // 最后追加 suffix（UBO block 之后的代码）
+        result.append(suffix);
         
         if (replaceCount > 0) {
             Iris.logger.info("[Iris-Metal] replaceUniformReference: replaced {} occurrences of {}", replaceCount, varName);
