@@ -173,9 +173,9 @@ public final class SPIRVToMslConverter {
                         return null;
                     }
                     // 使用 memUTF8 带最大长度限制，避免读取越界
-                    // 限制为 1MB 应该足够
+                    // 增加限制到 5MB 以查看完整的 MSL 代码
                     Iris.logger.info("[Iris-Metal] About to call memUTF8 with sourcePtr={}...", sourcePtr);
-                    String msl = org.lwjgl.system.MemoryUtil.memUTF8(sourcePtr, 1024 * 1024);
+                    String msl = org.lwjgl.system.MemoryUtil.memUTF8(sourcePtr, 5 * 1024 * 1024);
                     Iris.logger.info("[Iris-Metal] memUTF8 completed, MSL length={}", msl != null ? msl.length() : -1);
                     return msl;
                     

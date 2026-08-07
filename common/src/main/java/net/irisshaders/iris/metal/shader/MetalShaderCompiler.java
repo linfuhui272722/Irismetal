@@ -287,16 +287,18 @@ public final class MetalShaderCompiler {
                     if (isOpaqueType(trimmed)) {
                         // sampler/image 保留为 loose uniform
                         samplerUniforms.add(uniformDecl);
+                        // 仍然添加到 body，因为这些 uniform 不在 MetallumIrisUniforms 中
                         body.append(line).append("\n");
                         Iris.logger.info("[Iris-Metal] Keeping sampler uniform: {}", uniformDecl);
                     } else {
                         // non-opaque 类型放入 block
                         // 不添加到这个 body 中，因为我们会把它们移到 UBO 中
+                        // 注意：这里我们不追加到 body，相当于从源码中移除了这个 uniform 声明
                         blockUniforms.add(uniformDecl);
-                        Iris.logger.info("[Iris-Metal] Found block uniform: {}", uniformDecl);
+                        Iris.logger.info("[Iris-Metal] Found block uniform (will be moved to MetallumIrisUniforms): {}", uniformDecl);
                     }
                 }
-                continue;
+                continue; // 跳过添加这个 uniform 声明到 body
             }
             
             body.append(line).append("\n");
