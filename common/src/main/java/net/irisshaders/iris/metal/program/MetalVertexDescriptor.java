@@ -57,6 +57,7 @@ public final class MetalVertexDescriptor {
     public static final int FORMAT_SHORT2_NORMALIZED = 22;
     public static final int FORMAT_SHORT3_NORMALIZED = 23;
     public static final int FORMAT_SHORT4_NORMALIZED = 24;
+    public static final int FORMAT_FLOAT = 27;  // 用于单个 float (iris_LineWidth)
     public static final int FORMAT_FLOAT2 = 29;
     public static final int FORMAT_FLOAT3 = 30;
     public static final int FORMAT_FLOAT4 = 31;
@@ -147,7 +148,7 @@ public final class MetalVertexDescriptor {
         knownLocations.put("iris_UV0", 2);
         knownLocations.put("iris_UV2", 3);
         knownLocations.put("iris_Normal", 4);
-        knownLocations.put("iris_LineWidth", 3);
+        knownLocations.put("iris_LineWidth", 6); // LineWidth 使用单独的位置避免与 UV2 冲突
         knownLocations.put("mc_Entity", 5);
 
         while (matcher.find()) {
@@ -195,52 +196,27 @@ public final class MetalVertexDescriptor {
      * 根据 GLSL 类型名获取 Metal 格式。
      */
     private static int getMetalFormatFromGlslType(String glslType, String name) {
-        // 处理 iris_ 别名
-        String baseName = name.replace("iris_", "");
-
-        // MC 26.2 的特殊映射
-        if (baseName.equals("UV2")) {
-            // lightmap 是 RG16_SINT -> ivec2 -> Short2
-            return FORMAT_SHORT2;
+        // 首先根据实际的 GLSL 类型判断（更准确）
+        switch (glslType) {
+            case "float":
+                return FORMAT_FLOAT;
+            case "vec2":
+                return FORMAT_FLOAT2;
+            case "vec3":
+                return FORMAT_FLOAT3;
+            case "vec4":
+                return FORMAT_FLOAT4;
+            case "ivec2":
+                return FORMAT_SHORT2;  // MC 26.2 中 ivec2 实际是 RG16_SINT
+            case "ivec3":
+                return FORMAT_SHORT3;
+            case "ivec4":
+                return FORMAT_SHORT4;
+            case "mat4":
+                return FORMAT_FLOAT4;  // 不支持，但至少有个值
+            default:
+                return FORMAT_FLOAT4;
         }
-
-        if (baseName.equals("UV0")) {
-            // texture 是 RG32_FLOAT -> vec2 -> Float2
-            return FORMAT_FLOAT2;
-        }
-
-        if (baseName.equals("Position")) {
-            return FORMAT_FLOAT3;
-        }
-
-        if (baseName.equals("Color")) {
-            return FORMAT_UCHAR4_NORMALIZED;
-        }
-
-        if (baseName.equals("Normal")) {
-            return FORMAT_CHAR3_NORMALIZED;
-        }
-
-        if (baseName.equals("LineWidth")) {
-            return FORMAT_FLOAT2;
-        }
-
-        // mc_Entity 是 vec4
-        if (baseName.equals("Entity") || name.equals("mc_Entity")) {
-            return FORMAT_FLOAT4;
-        }
-
-        // 根据 GLSL 类型判断
-        return switch (glslType) {
-            case "vec2" -> FORMAT_FLOAT2;
-            case "vec3" -> FORMAT_FLOAT3;
-            case "vec4" -> FORMAT_FLOAT4;
-            case "ivec2" -> FORMAT_SHORT2;  // MC 26.2 中 ivec2 实际是 RG16_SINT
-            case "ivec3" -> FORMAT_SHORT3;
-            case "ivec4" -> FORMAT_SHORT4;
-            case "mat4" -> FORMAT_FLOAT4;  // 不支持，但至少有个值
-            default -> FORMAT_FLOAT4;
-        };
     }
 
     /**

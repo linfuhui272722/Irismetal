@@ -233,18 +233,6 @@ public final class MetalShaderCompiler {
             Iris.logger.info("[Iris-Metal] Upgraded shader from #version 330 to #version 450");
         }
 
-        // 为顶点着色器声明 gl_VertexID
-        // Metal 不支持 gl_VertexID，需要在 GLSL 层声明以便 SPIR-V 转换
-        if (type == ShaderType.VERTEX && result.contains("gl_VertexID")) {
-            // 检查是否已经有声明
-            if (!result.contains("in int gl_VertexID;") && !result.contains("in highp int gl_VertexID;")) {
-                // 在 directive prelude 之后插入声明
-                int insertPos = findDirectivePreludeEnd(result);
-                String vertexIdDecl = "// Metal compatibility: declare gl_VertexID as input\nin int gl_VertexID;\n\n";
-                result = result.substring(0, insertPos) + vertexIdDecl + result.substring(insertPos);
-                Iris.logger.info("[Iris-Metal] Added gl_VertexID declaration for Metal compatibility");
-            }
-        }
 
         // 收集所有 loose uniform 并创建 MetallumIrisUniforms block
         // 注意：wrapLooseUniforms 会处理 dhMaterialId 和 dhRenderDistance 等 uniforms
