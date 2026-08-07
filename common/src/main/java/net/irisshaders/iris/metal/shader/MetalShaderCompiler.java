@@ -67,7 +67,9 @@ import java.util.regex.Pattern;
 @Environment(EnvType.CLIENT)
 public final class MetalShaderCompiler {
     /** MSL 版本 3.0 */
+    // MSL 版本：使用 4.0（Metal 4.0），与 metallum 保持一致
     public static final int MSL_VERSION_3_0 = 0x30000;
+    public static final int MSL_VERSION_4_0 = 0x40000;
 
     private static final Map<String, MemorySegment> libraryCache = new HashMap<>();
     private static final Map<String, MemorySegment> functionCache = new HashMap<>();
@@ -114,6 +116,7 @@ public final class MetalShaderCompiler {
 
         // 步骤 2：SPIR-V → MSL（使用 LWJGL SPIRV-Cross）
         try {
+            // 使用 MSL 3.0
             String msl = SPIRVToMslConverter.convert(spirv, MSL_VERSION_3_0);
             if (msl == null || msl.isEmpty()) {
                 return CompileResult.failure("SPIRV-Cross returned empty MSL for " + name);

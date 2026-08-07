@@ -27,6 +27,15 @@ public final class SPIRVToMslConverter {
             Class<?> metalNativeBridge = Class.forName("com.metallum.client.metal.render.bridge.MetalNativeBridge");
             java.lang.reflect.Method ensureMethod = metalNativeBridge.getMethod("ensureSpvcLibraryConfigured");
             ensureMethod.invoke(null);
+            
+            // 确保 Spvc 类在 ensureSpvcLibraryConfigured() 之后才加载
+            // 这样可以确保使用 metallum 配置的 SPIRV-Cross 库
+            // 在 iOS 上，metallum 会设置 Configuration.SPVC_LIBRARY_NAME
+            // Spvc 类初始化时会读取这个配置
+            Class<?> spvcClass = Class.forName("org.lwjgl.util.spvc.Spvc");
+            // 访问 Spvc.SPVC 字段来触发类初始化
+            spvcClass.getField("SPIRV_MAGIC");
+            Iris.logger.info("[Iris-Metal] Spvc class loaded after ensureSpvcLibraryConfigured()");
         } catch (ClassNotFoundException e) {
             // metallum 未安装，SPIR-V 到 MSL 转换不可用
             Iris.logger.warn("Metallum not found, SPIR-V to MSL conversion unavailable");
