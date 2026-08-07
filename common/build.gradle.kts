@@ -45,11 +45,12 @@ buildConfig {
 }
 
 // === 下载 metallum 主 jar 文件 ===
+// 使用 linfuhui272722 fork 版本，包含 UV1/UV2 vertex format 修复
 val downloadMetallum by tasks.registering(Exec::class) {
     onlyIf { !file("libs/metallum-1.0.2.jar").exists() }
     commandLine(
         "curl", "-L", "-o", "libs/metallum-1.0.2.jar",
-        "https://github.com/EternityQwQ/MetalUniversal/releases/download/MetalUniversal_1.0.3/metallum-1.0.2.jar"
+        "https://github.com/linfuhui272722/MetalUniversal/releases/download/MetalUniversal_1.0.3/metallum-1.0.3.jar"
     )
     doFirst {
         mkdir("libs")

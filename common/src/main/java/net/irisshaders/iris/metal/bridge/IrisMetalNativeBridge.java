@@ -1794,6 +1794,10 @@ public final class IrisMetalNativeBridge {
         }
         try {
             Iris.logger.info("[Iris-Metal] newRenderPipelineState: Calling native function...");
+            
+            // Log vertex descriptor info before calling native
+            logVertexDescriptorInfo(descriptor);
+            
             MemorySegment result = (MemorySegment) compileRenderPipeline.invoke(device, descriptor);
             if (isNullHandle(result)) {
                 Iris.logger.error("[Iris-Metal] newRenderPipelineState: native returned NULL");
@@ -1805,6 +1809,12 @@ public final class IrisMetalNativeBridge {
             Iris.logger.error("[Iris-Metal] newRenderPipelineState: native threw exception", t);
             throw new RuntimeException("Failed to create render pipeline state", t);
         }
+    }
+    
+    private static void logVertexDescriptorInfo(MemorySegment descriptor) {
+        // This method logs info about the vertex descriptor before calling the native function
+        // We can't directly inspect the native MTLVertexDescriptor, but we log what we set
+        Iris.logger.info("[Iris-Metal] Vertex descriptor info: calling metallum native to create pipeline state");
     }
 
     public static void uploadBufferData(MemorySegment buffer, ByteBuffer data, long size) {
