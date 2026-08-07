@@ -347,66 +347,71 @@ public final class MetalShaderCompiler {
      * 只替换 uniform 声明和 UBO 成员声明之外的引用
      */
     private static String replaceUniformReference(String source, String varName) {
-        // 首先找到 UBO block 的范围
-        int uboStart = source.indexOf("layout(std140) uniform MetallumIrisUniforms {");
-        int uboEnd = -1;
-        if (uboStart != -1) {
-            uboEnd = source.indexOf("} iris_uniforms;", uboStart);
-        }
-        
-        // 如果找不到 UBO block，直接返回原字符串
-        if (uboStart == -1 || uboEnd == -1) {
-            Iris.logger.warn("[Iris-Metal] UBO block not found, skipping replacement for {}", varName);
+        // 首先找到 UBO block 的起始标记
+        int uboHeaderStart = source.indexOf("layout(std140) uniform MetallumIrisUniforms {");
+        if (uboHeaderStart == -1) {
+            Iris.logger.warn("[Iris-Metal] UBO header not found for {}", varName);
             return source;
         }
         
-        // UBO block 范围需要包含到行尾
-        int uboEndLine = source.indexOf("\n", uboEnd);
-        if (uboEndLine == -1) uboEndLine = source.length();
+        // 找到 UBO block 的结束括号位置（使用括号匹配）
+        int braceStart = source.indexOf("{", uboHeaderStart);
+        if (braceStart == -1) {
+            Iris.logger.warn("[Iris-Metal] UBO opening brace not found for {}", varName);
+            return source;
+        }
         
-        String prefix = source.substring(0, uboEndLine);
-        String suffix = source.substring(uboEndLine);
+        // 匹配括号找到结束位置
+        int braceEnd = findMatchingBrace(source, braceStart);
+        if (braceEnd == -1) {
+            Iris.logger.warn("[Iris-Metal] UBO closing brace not found for {}", varName);
+            return source;
+        }
         
-        // 在 prefix 中查找 UBO block 内部的 uniform 声明行
-        // 这些行以 "    type name;" 格式存在
-        String uboBlock = source.substring(uboStart, uboEndLine);
+        // UBO block 范围是从 { 到 }（包含括号）
+        // 注意：UBO block 内部的成员声明不需要替换
+        // 我们只需要替换 block 外部的引用
         
-        // 在 prefix 中（UBO 之前）替换变量引用
-        // 找出 prefix 中所有不在 uniform 声明行中的引用
+        // 在整个 source 中查找 varName，但跳过 UBO block 内部和 uniform 声明行
         StringBuilder result = new StringBuilder();
-        String prefixToSearch = prefix;
-        
         int searchFrom = 0;
         int replaceCount = 0;
         
         while (true) {
-            int found = prefixToSearch.indexOf(varName, searchFrom);
+            int found = source.indexOf(varName, searchFrom);
             if (found == -1) {
-                result.append(prefixToSearch.substring(searchFrom));
+                result.append(source.substring(searchFrom));
                 break;
             }
             
             // 检查是否是有效的单词边界
             if (found > 0) {
-                char prev = prefixToSearch.charAt(found - 1);
+                char prev = source.charAt(found - 1);
                 if (Character.isLetterOrDigit(prev) || prev == '_') {
                     searchFrom = found + 1;
                     continue;
                 }
             }
-            if (found + varName.length() < prefixToSearch.length()) {
-                char next = prefixToSearch.charAt(found + varName.length());
+            if (found + varName.length() < source.length()) {
+                char next = source.charAt(found + varName.length());
                 if (Character.isLetterOrDigit(next) || next == '_') {
                     searchFrom = found + 1;
                     continue;
                 }
             }
             
+            // 检查是否在 UBO block 内部
+            if (found > braceStart && found < braceEnd) {
+                // 在 UBO block 的大括号内部，不要替换
+                searchFrom = found + 1;
+                continue;
+            }
+            
             // 检查这行是否是 uniform 声明（以 "uniform " 开头）
-            int lineStart = prefixToSearch.lastIndexOf('\n', found);
+            int lineStart = source.lastIndexOf('\n', found);
             if (lineStart < 0) lineStart = 0;
             else lineStart++;
-            String lineBeforeVar = prefixToSearch.substring(lineStart, found).trim();
+            String lineBeforeVar = source.substring(lineStart, found).trim();
             
             if (lineBeforeVar.startsWith("uniform ")) {
                 // 这可能是 uniform 声明行，不要替换
@@ -415,21 +420,34 @@ public final class MetalShaderCompiler {
             }
             
             // 替换这个引用
-            result.append(prefixToSearch.substring(searchFrom, found));
+            result.append(source.substring(searchFrom, found));
             result.append("iris_uniforms.");
             result.append(varName);
             searchFrom = found + varName.length();
             replaceCount++;
         }
         
-        // 最后追加 suffix（UBO block 之后的代码）
-        result.append(suffix);
-        
         if (replaceCount > 0) {
             Iris.logger.info("[Iris-Metal] replaceUniformReference: replaced {} occurrences of {}", replaceCount, varName);
         }
         
         return result.toString();
+    }
+    
+    /**
+     * 找到匹配的右括号位置
+     */
+    private static int findMatchingBrace(String source, int openBrace) {
+        int depth = 1;
+        for (int i = openBrace + 1; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (c == '{') depth++;
+            else if (c == '}') {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+        return -1;
     }
     
     /**
