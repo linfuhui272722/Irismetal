@@ -45,16 +45,38 @@ public final class SPIRVToMslConverter {
      * @return MSL 源码，如果转换失败返回 null
      */
     public static String convert(ByteBuffer spirv, int mslVersion) {
-        Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: input spirv buffer - position={}, limit={}, capacity={}", 
-            spirv.position(), spirv.limit(), spirv.capacity());
+        Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: input spirv buffer - position={}, limit={}, capacity={}, order={}", 
+            spirv.position(), spirv.limit(), spirv.capacity(), spirv.order());
         
         try (var stack = org.lwjgl.system.MemoryStack.stackPush()) {
             // 确保 buffer 的位置是 0
             spirv.position(0);
             IntBuffer spirvWords = spirv.asIntBuffer();
             int wordCount = spirvWords.remaining();
-            Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: spirvWords - position={}, remaining={}, wordCount={}", 
-                spirvWords.position(), spirvWords.remaining(), wordCount);
+            Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: spirvWords - position={}, remaining={}, wordCount={}, order={}", 
+                spirvWords.position(), spirvWords.remaining(), wordCount, spirvWords.order());
+            
+            // 验证 SPIR-V header
+            if (wordCount < 5) {
+                Iris.logger.warn("SPIR-V buffer too small: {} words (minimum 5)", wordCount);
+                return null;
+            }
+            
+            // 检查 SPIR-V magic number (0x07230203)
+            int magic = spirvWords.get(0);
+            Iris.logger.info("[Iris-Metal] SPIR-V magic number: 0x{}", Integer.toHexString(magic));
+            if (magic != 0x07230203) {
+                Iris.logger.warn("Invalid SPIR-V magic number: 0x{} (expected 0x07230203)", Integer.toHexString(magic));
+                // 尝试字节序问题 - 如果是大端序的字节交换
+                int swappedMagic = Integer.reverseBytes(magic);
+                Iris.logger.info("[Iris-Metal] Swapped SPIR-V magic number: 0x{}", Integer.toHexString(swappedMagic));
+                if (swappedMagic == 0x07230203) {
+                    Iris.logger.warn("SPIR-V buffer has wrong byte order! Converting...");
+                    // 字节序不匹配，需要转换
+                    spirv.order(swappedMagic == 0x07230203 ? java.nio.ByteOrder.LITTLE_ENDIAN : java.nio.ByteOrder.BIG_ENDIAN);
+                    spirvWords = spirv.asIntBuffer();
+                }
+            }
             
             // 创建 context
             PointerBuffer pContext = stack.mallocPointer(1);
