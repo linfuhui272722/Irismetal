@@ -196,6 +196,13 @@ public final class MetalVertexDescriptor {
      * 根据 GLSL 类型名获取 Metal 格式。
      */
     private static int getMetalFormatFromGlslType(String glslType, String name) {
+        // 特殊处理：iris_UV2 总是使用 UShort2 格式
+        // 因为 Minecraft 26.2 的顶点格式中，UV2 (lightmap) 是 RG16_SINT
+        // 不管 shader 中声明为 ivec2 还是 vec2，都应该使用整数格式
+        if (name.equals("iris_UV2") || name.equals("iris_UV1")) {
+            return FORMAT_USHORT2;  // 使用无符号短整型
+        }
+
         // 首先根据实际的 GLSL 类型判断（更准确）
         switch (glslType) {
             case "float":
@@ -207,7 +214,7 @@ public final class MetalVertexDescriptor {
             case "vec4":
                 return FORMAT_FLOAT4;
             case "ivec2":
-                return FORMAT_SHORT2;  // MC 26.2 中 ivec2 实际是 RG16_SINT
+                return FORMAT_USHORT2;  // MC 26.2 中 ivec2 实际是 RG16_UINT
             case "ivec3":
                 return FORMAT_SHORT3;
             case "ivec4":

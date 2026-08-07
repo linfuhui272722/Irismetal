@@ -268,19 +268,6 @@ public final class MetalShaderCompiler {
         String shaderPreview = result.substring(0, previewLength).replace("\n", "\\n");
         Iris.logger.info("[Iris-Metal] Adapted shader preview (first {} of {} chars): {}", 
             previewLength, result.length(), shaderPreview);
-        
-        // 写入完整 shader 到文件以便调试
-        try {
-            String fileName = "iris_debug_shader_" + System.currentTimeMillis() + ".txt";
-            java.nio.file.Files.write(
-                java.nio.file.Paths.get(fileName),
-                result.getBytes()
-            );
-            Iris.logger.info("[Iris-Metal] Full shader written to: {}", fileName);
-        } catch (Exception e) {
-            Iris.logger.warn("[Iris-Metal] Failed to write shader file: {}", e.getMessage());
-        }
-
         return result;
     }
     
