@@ -117,13 +117,13 @@ public final class MetalVertexDescriptor {
         }
         
         // 设置 layout（stride 和 step function）
-        // 对于大多数情况，使用 PerVertex step function
+        // PerVertex 的 stepRate 必须是 0，不能是 1
         IrisMetalNativeBridge.setVertexDescriptorLayout(
             vertexDesc, 
             0,  // buffer index
             stride, 
             STEP_PER_VERTEX, 
-            1   // step rate
+            0   // step rate - PerVertex 必须是 0！
         );
         
         return vertexDesc;
