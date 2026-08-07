@@ -64,17 +64,29 @@ public final class SPIRVToMslConverter {
             
             // 检查 SPIR-V magic number (0x07230203)
             int magic = spirvWords.get(0);
-            Iris.logger.info("[Iris-Metal] SPIR-V magic number: 0x{}", Integer.toHexString(magic));
+            Iris.logger.info("[Iris-Metal] SPIR-V magic number: 0x{}", String.format("%08x", magic));
             if (magic != 0x07230203) {
-                Iris.logger.warn("Invalid SPIR-V magic number: 0x{} (expected 0x07230203)", Integer.toHexString(magic));
-                // 尝试字节序问题 - 如果是大端序的字节交换
+                // 尝试字节序问题
                 int swappedMagic = Integer.reverseBytes(magic);
-                Iris.logger.info("[Iris-Metal] Swapped SPIR-V magic number: 0x{}", Integer.toHexString(swappedMagic));
+                Iris.logger.info("[Iris-Metal] Swapped SPIR-V magic number: 0x{}", String.format("%08x", swappedMagic));
+                
                 if (swappedMagic == 0x07230203) {
-                    Iris.logger.warn("SPIR-V buffer has wrong byte order! Converting...");
-                    // 字节序不匹配，需要转换
-                    spirv.order(swappedMagic == 0x07230203 ? java.nio.ByteOrder.LITTLE_ENDIAN : java.nio.ByteOrder.BIG_ENDIAN);
+                    Iris.logger.warn("SPIR-V buffer has wrong byte order! Converting {} bytes...", spirv.remaining());
+                    // 需要实际转换字节数据
+                    ByteBuffer converted = ByteBuffer.allocateDirect(spirv.remaining())
+                        .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+                    // 逐字节复制并反转
+                    for (int i = 0; i < spirv.remaining(); i++) {
+                        converted.put(spirv.get(i));
+                    }
+                    converted.flip();
+                    spirv = converted;
                     spirvWords = spirv.asIntBuffer();
+                    wordCount = spirvWords.remaining();
+                    Iris.logger.info("[Iris-Metal] Conversion complete, new wordCount={}, magic=0x{}", 
+                        wordCount, String.format("%08x", spirvWords.get(0)));
+                } else {
+                    Iris.logger.warn("Invalid SPIR-V magic number: 0x{} (expected 0x07230203)", String.format("%08x", magic));
                 }
             }
             
@@ -168,7 +180,8 @@ public final class SPIRVToMslConverter {
      * 将 SPIR-V 字节数组转换为 MSL 源码。
      */
     public static String convert(byte[] spirv, int mslVersion) {
-        return convert(ByteBuffer.wrap(spirv), mslVersion);
+        // ByteBuffer.wrap() 默认是 BIG_ENDIAN，但 SPIR-V 需要 LITTLE_ENDIAN
+        return convert(ByteBuffer.wrap(spirv).order(java.nio.ByteOrder.LITTLE_ENDIAN), mslVersion);
     }
     
     /**
