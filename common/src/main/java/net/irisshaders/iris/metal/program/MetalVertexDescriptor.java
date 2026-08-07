@@ -29,15 +29,39 @@ import java.lang.foreign.MemorySegment;
  */
 @Environment(EnvType.CLIENT)
 public final class MetalVertexDescriptor {
-    // MTLVertexFormat 常量
+    // MTLVertexFormat 常量 (根据 metallum 的 MTLVertexFormat 枚举)
     public static final int FORMAT_INVALID = 0;
-    public static final int FORMAT_FLOAT2 = 1;
-    public static final int FORMAT_FLOAT3 = 2;
-    public static final int FORMAT_FLOAT4 = 3;
-    public static final int FORMAT_UCHAR4_NORMALIZED = 4;
-    public static final int FORMAT_USHORT2_NORMALIZED = 5;
-    public static final int FORMAT_CHAR3_NORMALIZED = 6;
-    public static final int FORMAT_UINT = 7;
+    public static final int FORMAT_UCHAR2 = 1;
+    public static final int FORMAT_UCHAR3 = 2;
+    public static final int FORMAT_UCHAR4 = 3;
+    public static final int FORMAT_CHAR2 = 4;
+    public static final int FORMAT_CHAR3 = 5;
+    public static final int FORMAT_CHAR4 = 6;
+    public static final int FORMAT_UCHAR2_NORMALIZED = 7;
+    public static final int FORMAT_UCHAR3_NORMALIZED = 8;
+    public static final int FORMAT_UCHAR4_NORMALIZED = 9;
+    public static final int FORMAT_CHAR2_NORMALIZED = 10;
+    public static final int FORMAT_CHAR3_NORMALIZED = 11;
+    public static final int FORMAT_CHAR4_NORMALIZED = 12;
+    public static final int FORMAT_USHORT2 = 13;
+    public static final int FORMAT_USHORT3 = 14;
+    public static final int FORMAT_USHORT4 = 15;
+    public static final int FORMAT_SHORT2 = 16;  // 用于 ivec2 (UV2 in MC 26.2)
+    public static final int FORMAT_SHORT3 = 17;
+    public static final int FORMAT_SHORT4 = 18;
+    public static final int FORMAT_USHORT2_NORMALIZED = 19;
+    public static final int FORMAT_USHORT3_NORMALIZED = 20;
+    public static final int FORMAT_USHORT4_NORMALIZED = 21;
+    public static final int FORMAT_SHORT2_NORMALIZED = 22;
+    public static final int FORMAT_SHORT3_NORMALIZED = 23;
+    public static final int FORMAT_SHORT4_NORMALIZED = 24;
+    public static final int FORMAT_FLOAT2 = 29;
+    public static final int FORMAT_FLOAT3 = 30;
+    public static final int FORMAT_FLOAT4 = 31;
+    public static final int FORMAT_INT = 32;
+    public static final int FORMAT_INT2 = 33;
+    public static final int FORMAT_INT3 = 34;
+    public static final int FORMAT_INT4 = 35;
 
     // MTLVertexStepFunction
     public static final int STEP_PER_VERTEX = 0;
@@ -53,14 +77,17 @@ public final class MetalVertexDescriptor {
 
     /**
      * 创建 MC 26.2 默认的 NEW_ENTITY / POSITION_COLOR_TEX_LIGHTMAP_NORMAL 顶点布局。
+     * 
+     * 注意：MC 26.2 中 UV2 (lightmap) 使用 RG16_SINT 格式，对应 Metal 的 Short2。
+     * glsl-transformer 将其转换为 GLSL 的 ivec2，所以这里使用 FORMAT_SHORT2。
      */
     public static MetalVertexDescriptor defaultMcFormat() {
         Attribute[] attrs = {
-                new Attribute(0, FORMAT_FLOAT3, 0, 0),           // position
-                new Attribute(1, FORMAT_UCHAR4_NORMALIZED, 12, 0), // color
-                new Attribute(2, FORMAT_FLOAT2, 16, 0),           // uv0 (texture)
-                new Attribute(3, FORMAT_USHORT2_NORMALIZED, 24, 0),// uv1 (lightmap)
-                new Attribute(4, FORMAT_CHAR3_NORMALIZED, 28, 0), // normal
+                new Attribute(0, FORMAT_FLOAT3, 0, 0),           // position (vec3)
+                new Attribute(1, FORMAT_UCHAR4_NORMALIZED, 12, 0), // color (vec4)
+                new Attribute(2, FORMAT_FLOAT2, 16, 0),         // uv0 (texture, vec2)
+                new Attribute(3, FORMAT_SHORT2, 24, 0),          // uv1 (lightmap, ivec2 in shader -> Short2 in metal)
+                new Attribute(4, FORMAT_CHAR3_NORMALIZED, 28, 0), // normal (vec3)
                 new Attribute(5, FORMAT_FLOAT4, 32, 0),          // mc_Entity (vec4)
         };
         return new MetalVertexDescriptor(attrs, 48);
