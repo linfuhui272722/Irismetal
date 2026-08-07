@@ -286,7 +286,7 @@ public final class MetalShaderCompiler {
         
         // 创建 MetallumIrisUniforms block
         StringBuilder block = new StringBuilder();
-        block.append("layout(std140) uniform MetallumIrisUniforms {\n");
+        block.append("\nlayout(std140) uniform MetallumIrisUniforms {\n");
         for (String uniform : blockUniforms) {
             block.append("    ").append(uniform).append(";\n");
         }
@@ -295,7 +295,15 @@ public final class MetalShaderCompiler {
         // 在 directive prelude 之后插入 block
         String shaderBody = body.toString();
         int insertPos = findDirectivePreludeEnd(shaderBody);
-        String result = shaderBody.substring(0, insertPos) + block.toString() + shaderBody.substring(insertPos);
+        
+        // 确保 insertPos 位置之前有换行符（以便 block 能正确地从新行开始）
+        String prefix = shaderBody.substring(0, insertPos);
+        if (!prefix.endsWith("\n")) {
+            prefix += "\n";
+            insertPos = insertPos + 1; // adjust since we added a character
+        }
+        
+        String result = prefix + block.toString() + shaderBody.substring(insertPos);
         
         // 替换 shader body 中对 loose uniform 的直接引用为 iris_uniforms.xxx
         // 注意：只有在 UBO block 之后的位置才需要替换
@@ -310,17 +318,17 @@ public final class MetalShaderCompiler {
                 }
                 
                 // 在 UBO block 之后的 shader 代码中替换变量引用
+                // UBO block 格式: "\nlayout(...) uniform MetallumIrisUniforms {\n    ...\n} iris_uniforms;\n\n"
+                // 我们需要找到第一个非换行字符的位置（跳过双换行后的空行）
                 int uboBlockEnd = result.indexOf("} iris_uniforms;");
                 if (uboBlockEnd == -1) {
                     Iris.logger.warn("[Iris-Metal] UBO end marker not found for {}", varName);
                     continue;
                 }
-                // 从 } iris_uniforms; 之后开始找到第一个换行
-                int shaderStart = result.indexOf("\n", uboBlockEnd);
-                if (shaderStart == -1) {
-                    shaderStart = uboBlockEnd;
-                } else {
-                    shaderStart++; // 跳过换行符
+                // 跳过 "} iris_uniforms;" 之后的所有换行符，直到找到实际代码
+                int shaderStart = uboBlockEnd + 2; // skip ";\n"
+                while (shaderStart < result.length() && result.charAt(shaderStart) == '\n') {
+                    shaderStart++;
                 }
                 
                 String uboBlock = result.substring(0, shaderStart);
