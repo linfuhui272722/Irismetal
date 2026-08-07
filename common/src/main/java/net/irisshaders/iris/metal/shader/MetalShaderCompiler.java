@@ -306,13 +306,33 @@ public final class MetalShaderCompiler {
                 if (varName.contains("[")) {
                     varName = varName.substring(0, varName.indexOf("["));
                 }
-                // 替换：直接使用 varName 改为 iris_uniforms.varName
-                // 但要确保不是在 uniform 声明行中
-                result = replaceUniformReference(result, varName);
+                // 检查变量在 shader 中是否被直接使用
+                if (result.contains(varName)) {
+                    String beforeReplace = result;
+                    result = replaceUniformReference(result, varName);
+                    if (!beforeReplace.equals(result)) {
+                        Iris.logger.info("[Iris-Metal] Replaced {} references to {} with iris_uniforms.{}", 
+                            countOccurrences(beforeReplace, varName) - countOccurrences(result, varName),
+                            varName, varName);
+                    }
+                }
             }
         }
         
         return result;
+    }
+    
+    /**
+     * 计算字符串中某个子串出现的次数
+     */
+    private static int countOccurrences(String str, String sub) {
+        int count = 0;
+        int idx = 0;
+        while ((idx = str.indexOf(sub, idx)) != -1) {
+            count++;
+            idx += sub.length();
+        }
+        return count;
     }
     
     /**
@@ -324,6 +344,7 @@ public final class MetalShaderCompiler {
         StringBuilder result = new StringBuilder();
         int lastIndex = 0;
         int searchIndex = 0;
+        int replaceCount = 0;
         
         while (true) {
             int found = source.indexOf(varName, searchIndex);
@@ -372,6 +393,13 @@ public final class MetalShaderCompiler {
                     searchIndex = found + 1;
                     continue;
                 }
+            } else {
+                // 检查是否在老的 uniform 声明行中（以 uniform 开头）
+                if (line.trim().startsWith("uniform ")) {
+                    // 这是 uniform 声明行，不要替换
+                    searchIndex = found + 1;
+                    continue;
+                }
             }
             
             // 替换这个引用
@@ -380,6 +408,11 @@ public final class MetalShaderCompiler {
             result.append(varName);
             lastIndex = found + varName.length();
             searchIndex = lastIndex;
+            replaceCount++;
+        }
+        
+        if (replaceCount > 0) {
+            Iris.logger.info("[Iris-Metal] replaceUniformReference: replaced {} occurrences of {}", replaceCount, varName);
         }
         
         return result.toString();
