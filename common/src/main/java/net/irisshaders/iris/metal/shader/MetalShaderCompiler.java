@@ -337,9 +337,22 @@ public final class MetalShaderCompiler {
     
     /**
      * 替换 shader 代码中对 uniform 变量的直接引用为 block 实例成员访问
-     * 只替换 uniform 声明之外的引用
+     * 只替换 uniform 声明和 UBO 成员声明之外的引用
      */
     private static String replaceUniformReference(String source, String varName) {
+        // 首先找到 UBO block 的范围
+        int uboStart = source.indexOf("layout(std140) uniform MetallumIrisUniforms {");
+        int uboEnd = -1;
+        if (uboStart != -1) {
+            uboEnd = source.indexOf("} iris_uniforms;", uboStart);
+        }
+        
+        // 如果找不到 UBO block，直接返回原字符串
+        if (uboStart == -1 || uboEnd == -1) {
+            Iris.logger.warn("[Iris-Metal] UBO block not found, skipping replacement for {}", varName);
+            return source;
+        }
+        
         // 查找所有 varName 的出现位置
         StringBuilder result = new StringBuilder();
         int lastIndex = 0;
@@ -369,37 +382,23 @@ public final class MetalShaderCompiler {
                 }
             }
             
-            // 检查这行是否是 uniform 声明（这一行包含 "uniform "）
-            int lineStart = source.lastIndexOf('\n', found);
-            if (lineStart < 0) lineStart = 0;
-            else lineStart++;
-            int lineEnd = source.indexOf('\n', found);
-            if (lineEnd < 0) lineEnd = source.length();
-            String line = source.substring(lineStart, lineEnd);
-            
-            if (line.trim().startsWith("uniform ")) {
-                // 这是 uniform 声明行，不要替换
+            // 检查是否在 UBO block 内部
+            if (found > uboStart && found < uboEnd) {
+                // 在 UBO 成员声明中，不要替换
                 searchIndex = found + 1;
                 continue;
             }
             
-            // 也要检查是否在刚刚创建的 MetallumIrisUniforms block 内部
-            // 通过检查前面是否有 "uniform MetallumIrisUniforms"
-            int blockStart = source.lastIndexOf("uniform MetallumIrisUniforms", found);
-            if (blockStart != -1) {
-                int blockEnd = source.indexOf("} iris_uniforms;", blockStart);
-                if (blockEnd != -1 && found < blockEnd) {
-                    // 在 block 内部，不要替换
-                    searchIndex = found + 1;
-                    continue;
-                }
-            } else {
-                // 检查是否在老的 uniform 声明行中（以 uniform 开头）
-                if (line.trim().startsWith("uniform ")) {
-                    // 这是 uniform 声明行，不要替换
-                    searchIndex = found + 1;
-                    continue;
-                }
+            // 检查这行是否是 uniform 声明（以 "uniform " 开头）
+            int lineStart = source.lastIndexOf('\n', found);
+            if (lineStart < 0) lineStart = 0;
+            else lineStart++;
+            String lineBeforeVar = source.substring(lineStart, found).trim();
+            
+            if (lineBeforeVar.startsWith("uniform ")) {
+                // 这可能是 uniform 声明行，不要替换
+                searchIndex = found + 1;
+                continue;
             }
             
             // 替换这个引用
