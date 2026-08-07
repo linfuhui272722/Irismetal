@@ -27,6 +27,15 @@ public final class SPIRVToMslConverter {
             Class<?> metalNativeBridge = Class.forName("com.metallum.client.metal.render.bridge.MetalNativeBridge");
             java.lang.reflect.Method ensureMethod = metalNativeBridge.getMethod("ensureSpvcLibraryConfigured");
             ensureMethod.invoke(null);
+            
+            // 确保 Spvc 类在 ensureSpvcLibraryConfigured() 之后才加载
+            // 这样可以确保使用 metallum 配置的 SPIRV-Cross 库
+            // 在 iOS 上，metallum 会设置 Configuration.SPVC_LIBRARY_NAME
+            // Spvc 类初始化时会读取这个配置
+            Class<?> spvcClass = Class.forName("org.lwjgl.util.spvc.Spvc");
+            // 访问 Spvc.SPVC 字段来触发类初始化
+            spvcClass.getField("SPIRV_MAGIC");
+            Iris.logger.info("[Iris-Metal] Spvc class loaded after ensureSpvcLibraryConfigured()");
         } catch (ClassNotFoundException e) {
             // metallum 未安装，SPIR-V 到 MSL 转换不可用
             Iris.logger.warn("Metallum not found, SPIR-V to MSL conversion unavailable");
@@ -164,9 +173,9 @@ public final class SPIRVToMslConverter {
                         return null;
                     }
                     // 使用 memUTF8 带最大长度限制，避免读取越界
-                    // 限制为 1MB 应该足够
+                    // 增加限制到 5MB 以查看完整的 MSL 代码
                     Iris.logger.info("[Iris-Metal] About to call memUTF8 with sourcePtr={}...", sourcePtr);
-                    String msl = org.lwjgl.system.MemoryUtil.memUTF8(sourcePtr, 1024 * 1024);
+                    String msl = org.lwjgl.system.MemoryUtil.memUTF8(sourcePtr, 5 * 1024 * 1024);
                     Iris.logger.info("[Iris-Metal] memUTF8 completed, MSL length={}", msl != null ? msl.length() : -1);
                     return msl;
                     

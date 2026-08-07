@@ -67,7 +67,9 @@ import java.util.regex.Pattern;
 @Environment(EnvType.CLIENT)
 public final class MetalShaderCompiler {
     /** MSL 版本 3.0 */
+    // MSL 版本：使用 4.0（Metal 4.0），与 metallum 保持一致
     public static final int MSL_VERSION_3_0 = 0x30000;
+    public static final int MSL_VERSION_4_0 = 0x40000;
 
     private static final Map<String, MemorySegment> libraryCache = new HashMap<>();
     private static final Map<String, MemorySegment> functionCache = new HashMap<>();
@@ -111,10 +113,13 @@ public final class MetalShaderCompiler {
 
         // 步骤 2：SPIR-V → MSL（使用 LWJGL SPIRV-Cross）
         try {
+            // 使用 MSL 3.0
             String msl = SPIRVToMslConverter.convert(spirv, MSL_VERSION_3_0);
             if (msl == null || msl.isEmpty()) {
                 return CompileResult.failure("SPIRV-Cross returned empty MSL for " + name);
             }
+            
+            Iris.logger.info("[Iris-Metal] MSL compilation succeeded for {}, MSL length={}", name, msl.length());
             return CompileResult.success(msl);
         } catch (Throwable t) {
             return CompileResult.failure("SPIRV-Cross invocation failed for " + name + ": " + t.getMessage());
@@ -282,16 +287,18 @@ public final class MetalShaderCompiler {
                     if (isOpaqueType(trimmed)) {
                         // sampler/image 保留为 loose uniform
                         samplerUniforms.add(uniformDecl);
+                        // 仍然添加到 body，因为这些 uniform 不在 MetallumIrisUniforms 中
                         body.append(line).append("\n");
                         Iris.logger.info("[Iris-Metal] Keeping sampler uniform: {}", uniformDecl);
                     } else {
                         // non-opaque 类型放入 block
                         // 不添加到这个 body 中，因为我们会把它们移到 UBO 中
+                        // 注意：这里我们不追加到 body，相当于从源码中移除了这个 uniform 声明
                         blockUniforms.add(uniformDecl);
-                        Iris.logger.info("[Iris-Metal] Found block uniform: {}", uniformDecl);
+                        Iris.logger.info("[Iris-Metal] Found block uniform (will be moved to MetallumIrisUniforms): {}", uniformDecl);
                     }
                 }
-                continue;
+                continue; // 跳过添加这个 uniform 声明到 body
             }
             
             body.append(line).append("\n");
