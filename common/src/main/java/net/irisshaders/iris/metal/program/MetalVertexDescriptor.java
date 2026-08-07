@@ -5,6 +5,8 @@ import net.fabricmc.api.Environment;
 import net.irisshaders.iris.metal.bridge.IrisMetalNativeBridge;
 
 import java.lang.foreign.MemorySegment;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Metal vertex descriptor，描述顶点缓冲区的布局。
@@ -111,6 +113,110 @@ public final class MetalVertexDescriptor {
                 new Attribute(1, FORMAT_FLOAT2, 12, 0),   // texcoord (u, v)
         };
         return new MetalVertexDescriptor(attrs, 20);
+    }
+
+    /**
+     * 根据 shader 源码中的 in 声明解析 attribute 信息，并创建 vertex descriptor。
+     * 这是最准确的方法，因为它直接读取 shader 源码中声明的属性。
+     *
+     * @param vertexSource GLSL 顶点着色器源码
+     * @return 匹配 shader 属性的 vertex descriptor
+     */
+    public static MetalVertexDescriptor fromShaderSource(String vertexSource) {
+        List<Attribute> attrs = new ArrayList<>();
+        int currentOffset = 0;
+        int currentLocation = 0;
+
+        // 解析 shader 中的 in 声明
+        // 格式: in <type> <name>;
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+            "in\\s+(\\w+)\\s+(iris_\\w+)\\s*;"
+        );
+        java.util.regex.Matcher matcher = pattern.matcher(vertexSource);
+
+        while (matcher.find()) {
+            String type = matcher.group(1);
+            String name = matcher.group(2);
+
+            int format = getMetalFormatFromGlslType(type, name);
+            int byteSize = getGLSLTypeByteSize(type);
+
+            attrs.add(new Attribute(currentLocation, format, currentOffset, 0));
+
+            currentLocation++;
+            currentOffset += byteSize;
+        }
+
+        if (attrs.isEmpty()) {
+            // 备用：创建默认的 descriptor
+            return defaultMcFormat();
+        }
+
+        return new MetalVertexDescriptor(attrs.toArray(new Attribute[0]), currentOffset);
+    }
+
+    /**
+     * 根据 GLSL 类型名获取 Metal 格式。
+     */
+    private static int getMetalFormatFromGlslType(String glslType, String name) {
+        // 处理 iris_ 别名
+        String baseName = name.replace("iris_", "");
+
+        // MC 26.2 的特殊映射
+        if (baseName.equals("UV2")) {
+            // lightmap 是 RG16_SINT -> ivec2 -> Short2
+            return FORMAT_SHORT2;
+        }
+
+        if (baseName.equals("UV0")) {
+            // texture 是 RG32_FLOAT -> vec2 -> Float2
+            return FORMAT_FLOAT2;
+        }
+
+        if (baseName.equals("Position")) {
+            return FORMAT_FLOAT3;
+        }
+
+        if (baseName.equals("Color")) {
+            return FORMAT_UCHAR4_NORMALIZED;
+        }
+
+        if (baseName.equals("Normal")) {
+            return FORMAT_CHAR3_NORMALIZED;
+        }
+
+        if (baseName.equals("LineWidth")) {
+            return FORMAT_FLOAT2;
+        }
+
+        // 根据 GLSL 类型判断
+        return switch (glslType) {
+            case "vec2" -> FORMAT_FLOAT2;
+            case "vec3" -> FORMAT_FLOAT3;
+            case "vec4" -> FORMAT_FLOAT4;
+            case "ivec2" -> FORMAT_SHORT2;  // MC 26.2 中 ivec2 实际是 RG16_SINT
+            case "ivec3" -> FORMAT_SHORT3;
+            case "ivec4" -> FORMAT_SHORT4;
+            case "mat4" -> FORMAT_FLOAT4;  // 不支持，但至少有个值
+            default -> FORMAT_FLOAT4;
+        };
+    }
+
+    /**
+     * 获取 GLSL 类型的字节大小。
+     */
+    private static int getGLSLTypeByteSize(String glslType) {
+        return switch (glslType) {
+            case "float" -> 4;
+            case "vec2" -> 8;
+            case "vec3" -> 12;
+            case "vec4" -> 16;
+            case "ivec2" -> 4;  // MC 26.2 使用 RG16_SINT = 2 shorts = 4 bytes
+            case "ivec3" -> 12;
+            case "ivec4" -> 16;
+            case "mat4" -> 64;
+            default -> 16;
+        };
     }
 
     public Attribute[] attributes() {
