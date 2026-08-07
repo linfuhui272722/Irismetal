@@ -157,13 +157,18 @@ public final class SPIRVToMslConverter {
                     }
                     
                     long sourcePtr = pSource.get(0);
+                    Iris.logger.info("[Iris-Metal] sourcePtr = {}", sourcePtr);
                     // 使用 safe copy - 分配一个临时的 Java 字符串而不是依赖 native 指针
                     if (sourcePtr == 0) {
+                        Iris.logger.warn("sourcePtr is 0, returning null");
                         return null;
                     }
                     // 使用 memUTF8 带最大长度限制，避免读取越界
                     // 限制为 1MB 应该足够
-                    return org.lwjgl.system.MemoryUtil.memUTF8(sourcePtr, 1024 * 1024);
+                    Iris.logger.info("[Iris-Metal] About to call memUTF8 with sourcePtr={}...", sourcePtr);
+                    String msl = org.lwjgl.system.MemoryUtil.memUTF8(sourcePtr, 1024 * 1024);
+                    Iris.logger.info("[Iris-Metal] memUTF8 completed, MSL length={}", msl != null ? msl.length() : -1);
+                    return msl;
                     
                 } finally {
                     Spvc.spvc_context_destroy(context);
