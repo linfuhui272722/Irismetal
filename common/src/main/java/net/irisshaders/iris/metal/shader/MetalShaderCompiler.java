@@ -276,13 +276,13 @@ public final class MetalShaderCompiler {
             return source;
         }
         
-        // 创建 MetallumIrisUniforms block
+        // 创建 MetallumIrisUniforms block（注意：block 名称和实例名称都是 MetallumIrisUniforms）
         StringBuilder block = new StringBuilder();
         block.append("layout(std140) uniform MetallumIrisUniforms {\n");
         for (String uniform : blockUniforms) {
             block.append("    ").append(uniform).append(";\n");
         }
-        block.append("};\n\n");
+        block.append("} MetallumIrisUniforms;\n\n");
         
         // 在 directive prelude 之后插入 block
         String shaderBody = body.toString();
