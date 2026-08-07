@@ -284,8 +284,6 @@ public final class MetalShaderCompiler {
         }
         
         // 创建 MetallumIrisUniforms block
-        // 注意：block 名称必须是 MetallumIrisUniforms（metallum 期望这个名字）
-        // 实例名称使用 iris_uniforms（与 metallum 中的命名一致）
         StringBuilder block = new StringBuilder();
         block.append("layout(std140) uniform MetallumIrisUniforms {\n");
         for (String uniform : blockUniforms) {
@@ -296,8 +294,68 @@ public final class MetalShaderCompiler {
         // 在 directive prelude 之后插入 block
         String shaderBody = body.toString();
         int insertPos = findDirectivePreludeEnd(shaderBody);
+        String result = shaderBody.substring(0, insertPos) + block.toString() + shaderBody.substring(insertPos);
         
-        return shaderBody.substring(0, insertPos) + block.toString() + shaderBody.substring(insertPos);
+        // 替换 shader body 中对 loose uniform 的直接引用为 iris_uniforms.xxx
+        for (String uniformDecl : blockUniforms) {
+            // uniformDecl 格式是 "类型 名称" 或 "类型 名称[数组大小]"
+            String[] parts = uniformDecl.trim().split("\\s+");
+            if (parts.length >= 2) {
+                String varName = parts[parts.length - 1];
+                // 移除数组大小后缀 [x]
+                if (varName.contains("[")) {
+                    varName = varName.substring(0, varName.indexOf("["));
+                }
+                // 替换：直接使用 varName 改为 iris_uniforms.varName
+                // 但要确保不是在 uniform 声明行中
+                result = replaceUniformReference(result, varName);
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * 替换 shader 代码中对 uniform 变量的直接引用为 block 实例成员访问
+     */
+    private static String replaceUniformReference(String source, String varName) {
+        // 使用正则替换，但要避免替换 uniform 声明中的变量名
+        // 匹配模式：在 uniform 声明之外的 varName 引用
+        String pattern = "\\b(?<!uniform\\s)(?<![a-zA-Z_])" + Pattern.quote(varName) + "\\b";
+        
+        // 检查是否有这个变量的引用（除了 uniform 声明）
+        Pattern p = Pattern.compile(pattern);
+        Matcher m = p.matcher(source);
+        if (!m.find()) {
+            return source;
+        }
+        
+        // 替换所有引用（除了 uniform 声明行）
+        StringBuilder sb = new StringBuilder();
+        int lastEnd = 0;
+        m.reset();
+        
+        while (m.find()) {
+            int start = m.start();
+            int end = m.end();
+            
+            // 检查这行是否是 uniform 声明
+            int lineStart = source.lastIndexOf('\n', start) + 1;
+            int lineEnd = source.indexOf('\n', start);
+            if (lineEnd < 0) lineEnd = source.length();
+            String line = source.substring(lineStart, lineEnd);
+            
+            if (!line.trim().startsWith("uniform ")) {
+                // 替换为 iris_uniforms.varName
+                sb.append(source, lastEnd, start);
+                sb.append("iris_uniforms.");
+                sb.append(varName);
+                lastEnd = end;
+            }
+        }
+        sb.append(source.substring(lastEnd));
+        
+        return sb.toString();
     }
     
     /**
