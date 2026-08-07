@@ -45,16 +45,16 @@ public final class SPIRVToMslConverter {
      * @return MSL 源码，如果转换失败返回 null
      */
     public static String convert(ByteBuffer spirv, int mslVersion) {
-        Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: input spirv buffer - position={}, limit={}, capacity={}, order={}", 
-            spirv.position(), spirv.limit(), spirv.capacity(), spirv.order());
+        Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: input spirv buffer - isDirect={}, position={}, limit={}, capacity={}, order={}", 
+            spirv.isDirect(), spirv.position(), spirv.limit(), spirv.capacity(), spirv.order());
         
         try (var stack = org.lwjgl.system.MemoryStack.stackPush()) {
             // 确保 buffer 的位置是 0
             spirv.position(0);
             IntBuffer spirvWords = spirv.asIntBuffer();
             int wordCount = spirvWords.remaining();
-            Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: spirvWords - position={}, remaining={}, wordCount={}, order={}", 
-                spirvWords.position(), spirvWords.remaining(), wordCount, spirvWords.order());
+            Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: spirvWords - position={}, remaining={}, wordCount={}", 
+                spirvWords.position(), spirvWords.remaining(), wordCount);
             
             // 验证 SPIR-V header
             if (wordCount < 5) {
@@ -66,28 +66,7 @@ public final class SPIRVToMslConverter {
             int magic = spirvWords.get(0);
             Iris.logger.info("[Iris-Metal] SPIR-V magic number: 0x{}", String.format("%08x", magic));
             if (magic != 0x07230203) {
-                // 尝试字节序问题
-                int swappedMagic = Integer.reverseBytes(magic);
-                Iris.logger.info("[Iris-Metal] Swapped SPIR-V magic number: 0x{}", String.format("%08x", swappedMagic));
-                
-                if (swappedMagic == 0x07230203) {
-                    Iris.logger.warn("SPIR-V buffer has wrong byte order! Converting {} bytes...", spirv.remaining());
-                    // 需要实际转换字节数据
-                    ByteBuffer converted = ByteBuffer.allocateDirect(spirv.remaining())
-                        .order(java.nio.ByteOrder.LITTLE_ENDIAN);
-                    // 逐字节复制并反转
-                    for (int i = 0; i < spirv.remaining(); i++) {
-                        converted.put(spirv.get(i));
-                    }
-                    converted.flip();
-                    spirv = converted;
-                    spirvWords = spirv.asIntBuffer();
-                    wordCount = spirvWords.remaining();
-                    Iris.logger.info("[Iris-Metal] Conversion complete, new wordCount={}, magic=0x{}", 
-                        wordCount, String.format("%08x", spirvWords.get(0)));
-                } else {
-                    Iris.logger.warn("Invalid SPIR-V magic number: 0x{} (expected 0x07230203)", String.format("%08x", magic));
-                }
+                Iris.logger.warn("Invalid SPIR-V magic number: 0x{} (expected 0x07230203)", String.format("%08x", magic));
             }
             
             // 创建 context
@@ -180,8 +159,18 @@ public final class SPIRVToMslConverter {
      * 将 SPIR-V 字节数组转换为 MSL 源码。
      */
     public static String convert(byte[] spirv, int mslVersion) {
-        // ByteBuffer.wrap() 默认是 BIG_ENDIAN，但 SPIR-V 需要 LITTLE_ENDIAN
-        return convert(ByteBuffer.wrap(spirv).order(java.nio.ByteOrder.LITTLE_ENDIAN), mslVersion);
+        // 使用直接的 ByteBuffer（与 vanilla Minecraft 一致）
+        // MemoryUtil.memAlloc 分配 native 内存，比 ByteBuffer.wrap() 更可靠
+        ByteBuffer directBuffer = org.lwjgl.system.MemoryUtil.memAlloc(spirv.length)
+            .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        directBuffer.put(spirv);
+        directBuffer.flip();
+        try {
+            return convert(directBuffer, mslVersion);
+        } finally {
+            // 释放 native 内存
+            org.lwjgl.system.MemoryUtil.memFree(directBuffer);
+        }
     }
     
     /**
