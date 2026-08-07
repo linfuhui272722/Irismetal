@@ -340,6 +340,11 @@ public final class MetalShaderCompiler {
                 Iris.logger.info("[Iris-Metal] Before replace: shaderCode length = {}, contains {} = {}", 
                     shaderCode.length(), varName, countOccurrences(shaderCode, varName));
                 
+                // 调试：打印 shaderCode 的最后 300 字符
+                if (shaderCode.length() > 300) {
+                    Iris.logger.info("[Iris-Metal] shaderCode tail: {}", shaderCode.substring(shaderCode.length() - 300));
+                }
+                
                 String newShaderCode = replaceInShaderCode(shaderCode, varName);
                 
                 int replaceCount = countOccurrences(shaderCode, varName) - countOccurrences(newShaderCode, varName);
@@ -352,6 +357,11 @@ public final class MetalShaderCompiler {
                 result = uboBlock + newShaderCode;
                 Iris.logger.info("[Iris-Metal] Final result length = {}", result.length());
             }
+        }
+        
+        // 调试：打印完整结果的最后 500 字符
+        if (result.length() > 500) {
+            Iris.logger.info("[Iris-Metal] Result tail: {}", result.substring(result.length() - 500));
         }
         
         return result;
