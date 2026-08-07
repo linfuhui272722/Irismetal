@@ -174,6 +174,11 @@ public final class IrisMetalNativeBridge {
     private static MethodHandle getCompiledMslError;
     private static MethodHandle freeCompiledShader;
 
+    // ===== Vertex Descriptor =====
+    private static MethodHandle vertexDescriptorCreate;
+    private static MethodHandle vertexDescriptorSetAttribute;
+    private static MethodHandle vertexDescriptorSetLayout;
+
     private IrisMetalNativeBridge() {
     }
 
@@ -405,6 +410,14 @@ public final class IrisMetalNativeBridge {
         blitGenerateMipmaps = optionalDowncall(lookup, "metallum_MTLBlitCommandEncoder_generateMipmaps",
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
+        // Vertex Descriptor
+        vertexDescriptorCreate = optionalDowncall(lookup, "metallum_MTLVertexDescriptor_create",
+                FunctionDescriptor.of(ValueLayout.ADDRESS));
+        vertexDescriptorSetAttribute = optionalDowncall(lookup, "metallum_MTLVertexDescriptor_setAttribute",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
+        vertexDescriptorSetLayout = optionalDowncall(lookup, "metallum_MTLVertexDescriptor_setLayout",
+                FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, LONG, LONG, LONG, LONG));
+
         // SPIRV-Cross shader 编译 (可选，因为 shader 可能在构建时预编译)
         compileGlslToMsl = optionalDowncall(lookup, "metallum_compile_glsl_to_msl",
                 FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -519,6 +532,78 @@ public final class IrisMetalNativeBridge {
             releaseObject.invoke(handle);
         } catch (Throwable t) {
             Iris.logger.error("Failed to release Metal object", t);
+        }
+    }
+
+    // ===== Vertex Descriptor =====
+    
+    /**
+     * 创建 Metal vertex descriptor。
+     */
+    public static MemorySegment createMTLVertexDescriptor() {
+        if (vertexDescriptorCreate == null) {
+            Iris.logger.error("[Iris-Metal] createMTLVertexDescriptor: method handle is null");
+            return MemorySegment.NULL;
+        }
+        try {
+            MemorySegment result = (MemorySegment) vertexDescriptorCreate.invoke();
+            if (isNullHandle(result)) {
+                Iris.logger.error("[Iris-Metal] createMTLVertexDescriptor: returned NULL");
+            } else {
+                Iris.logger.info("[Iris-Metal] createMTLVertexDescriptor: success, handle={}", result.address());
+            }
+            return result;
+        } catch (Throwable t) {
+            Iris.logger.error("Failed to create MTLVertexDescriptor", t);
+            return MemorySegment.NULL;
+        }
+    }
+
+    /**
+     * 设置 vertex descriptor 的 attribute。
+     * @param vertexDesc vertex descriptor
+     * @param index attribute 索引 (0-15)
+     * @param format MTLVertexFormat 值
+     * @param offset 偏移量 (bytes)
+     * @param bufferIndex buffer 索引
+     */
+    public static void setVertexDescriptorAttribute(MemorySegment vertexDesc, int index, int format, int offset, int bufferIndex) {
+        if (vertexDescriptorSetAttribute == null) {
+            Iris.logger.error("[Iris-Metal] setVertexDescriptorAttribute: method handle is null");
+            return;
+        }
+        if (isNullHandle(vertexDesc)) {
+            Iris.logger.error("[Iris-Metal] setVertexDescriptorAttribute: vertexDesc is null");
+            return;
+        }
+        try {
+            vertexDescriptorSetAttribute.invoke(vertexDesc, (long) index, (long) format, (long) offset, (long) bufferIndex);
+        } catch (Throwable t) {
+            Iris.logger.error("Failed to set vertex descriptor attribute", t);
+        }
+    }
+
+    /**
+     * 设置 vertex descriptor 的 layout。
+     * @param vertexDesc vertex descriptor
+     * @param bufferIndex buffer 索引
+     * @param stride stride (bytes)
+     * @param stepFunction MTLVertexStepFunction 值 (0=PerVertex, 1=PerInstance)
+     * @param stepRate step rate
+     */
+    public static void setVertexDescriptorLayout(MemorySegment vertexDesc, int bufferIndex, int stride, int stepFunction, int stepRate) {
+        if (vertexDescriptorSetLayout == null) {
+            Iris.logger.error("[Iris-Metal] setVertexDescriptorLayout: method handle is null");
+            return;
+        }
+        if (isNullHandle(vertexDesc)) {
+            Iris.logger.error("[Iris-Metal] setVertexDescriptorLayout: vertexDesc is null");
+            return;
+        }
+        try {
+            vertexDescriptorSetLayout.invoke(vertexDesc, (long) bufferIndex, (long) stride, (long) stepFunction, (long) stepRate);
+        } catch (Throwable t) {
+            Iris.logger.error("Failed to set vertex descriptor layout", t);
         }
     }
 
