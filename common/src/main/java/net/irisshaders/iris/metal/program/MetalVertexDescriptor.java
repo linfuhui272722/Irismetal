@@ -125,14 +125,30 @@ public final class MetalVertexDescriptor {
     public static MetalVertexDescriptor fromShaderSource(String vertexSource) {
         List<Attribute> attrs = new ArrayList<>();
         int currentOffset = 0;
-        int currentLocation = 0;
 
         // 解析 shader 中的 in 声明
         // 格式: in <type> <name>;
+        // 匹配 iris_ 前缀和 mc_ 等其他前缀的属性
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-            "in\\s+(\\w+)\\s+(iris_\\w+)\\s*;"
+            "in\\s+(\\w+)\\s+((?:iris_|mc_)\\w+)\\s*;"
         );
         java.util.regex.Matcher matcher = pattern.matcher(vertexSource);
+
+        // Minecraft 顶点格式使用固定的 location 映射:
+        // location 0: Position (vec3)
+        // location 1: Color (vec4)
+        // location 2: UV0 (vec2)
+        // location 3: UV2 (ivec2) / LineWidth
+        // location 4: Normal (vec3)
+        // location 5: mc_Entity (vec4)
+        java.util.Map<String, Integer> knownLocations = new java.util.HashMap<>();
+        knownLocations.put("iris_Position", 0);
+        knownLocations.put("iris_Color", 1);
+        knownLocations.put("iris_UV0", 2);
+        knownLocations.put("iris_UV2", 3);
+        knownLocations.put("iris_Normal", 4);
+        knownLocations.put("iris_LineWidth", 3);
+        knownLocations.put("mc_Entity", 5);
 
         while (matcher.find()) {
             String type = matcher.group(1);
@@ -141,18 +157,38 @@ public final class MetalVertexDescriptor {
             int format = getMetalFormatFromGlslType(type, name);
             int byteSize = getGLSLTypeByteSize(type);
 
-            attrs.add(new Attribute(currentLocation, format, currentOffset, 0));
+            Integer knownLocation = knownLocations.get(name);
+            int location;
+            if (knownLocation != null) {
+                location = knownLocation;
+            } else {
+                // 对于未知属性，使用下一个可用的 location
+                int maxUsed = 5;
+                for (int loc : knownLocations.values()) {
+                    maxUsed = Math.max(maxUsed, loc);
+                }
+                location = maxUsed + 1;
+            }
 
-            currentLocation++;
+            attrs.add(new Attribute(location, format, currentOffset, 0));
+
             currentOffset += byteSize;
+            net.irisshaders.iris.Iris.logger.info("[Iris-Metal] Parsed vertex attribute: {} {} at location {}", type, name, location);
         }
 
         if (attrs.isEmpty()) {
             // 备用：创建默认的 descriptor
+            net.irisshaders.iris.Iris.logger.warn("[Iris-Metal] No attributes parsed from shader, using default vertex format");
             return defaultMcFormat();
         }
 
-        return new MetalVertexDescriptor(attrs.toArray(new Attribute[0]), currentOffset);
+        // 确保 stride 是 4 字节对齐
+        int stride = currentOffset;
+        if (stride % 4 != 0) {
+            stride = ((stride / 4) + 1) * 4;
+        }
+
+        return new MetalVertexDescriptor(attrs.toArray(new Attribute[0]), stride);
     }
 
     /**
@@ -187,6 +223,11 @@ public final class MetalVertexDescriptor {
 
         if (baseName.equals("LineWidth")) {
             return FORMAT_FLOAT2;
+        }
+
+        // mc_Entity 是 vec4
+        if (baseName.equals("Entity") || name.equals("mc_Entity")) {
+            return FORMAT_FLOAT4;
         }
 
         // 根据 GLSL 类型判断
