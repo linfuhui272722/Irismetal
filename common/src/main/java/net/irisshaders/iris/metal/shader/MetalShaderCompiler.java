@@ -262,6 +262,7 @@ public final class MetalShaderCompiler {
                         Iris.logger.info("[Iris-Metal] Keeping sampler uniform: {}", uniformDecl);
                     } else {
                         // non-opaque 类型放入 block
+                        // 不添加到这个 body 中，因为我们会把它们移到 UBO 中
                         blockUniforms.add(uniformDecl);
                         Iris.logger.info("[Iris-Metal] Found block uniform: {}", uniformDecl);
                     }
@@ -306,16 +307,22 @@ public final class MetalShaderCompiler {
                 if (varName.contains("[")) {
                     varName = varName.substring(0, varName.indexOf("["));
                 }
-                // 检查变量在 shader 中是否被直接使用
-                if (result.contains(varName)) {
-                    String beforeReplace = result;
-                    result = replaceUniformReference(result, varName);
-                    if (!beforeReplace.equals(result)) {
-                        Iris.logger.info("[Iris-Metal] Replaced {} references to {} with iris_uniforms.{}", 
-                            countOccurrences(beforeReplace, varName) - countOccurrences(result, varName),
-                            varName, varName);
+                
+                // 调试：打印替换前的 shader 片段
+                int countBefore = countOccurrences(result, varName);
+                Iris.logger.info("[Iris-Metal] Before replace: found {} occurrences of {} in shader", countBefore, varName);
+                
+                // 调试：打印包含这个变量的行
+                for (String line : result.split("\n")) {
+                    if (line.contains(varName)) {
+                        Iris.logger.info("[Iris-Metal]   Line with {}: {}", varName, line.trim().substring(0, Math.min(100, line.trim().length())));
                     }
                 }
+                
+                result = replaceUniformReference(result, varName);
+                
+                int countAfter = countOccurrences(result, varName);
+                Iris.logger.info("[Iris-Metal] After replace: found {} occurrences of {}", countAfter, varName);
             }
         }
         
