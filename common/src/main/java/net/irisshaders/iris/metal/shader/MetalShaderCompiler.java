@@ -319,22 +319,23 @@ public final class MetalShaderCompiler {
                 
                 // 在 UBO block 之后的 shader 代码中替换变量引用
                 // UBO block 格式: "\nlayout(...) uniform MetallumIrisUniforms {\n    ...\n} iris_uniforms;\n\n"
-                // 我们需要找到 "} iris_uniforms;" 之后第一个非换行字符的位置
+                // 找到 "} iris_uniforms;" 所在行的行尾（换行符位置）
                 String uboEndMarker = "} iris_uniforms;";
                 int uboEndPos = result.indexOf(uboEndMarker);
                 if (uboEndPos == -1) {
                     Iris.logger.warn("[Iris-Metal] UBO end marker not found for {}", varName);
                     continue;
                 }
-                // shaderStart 是 "} iris_uniforms;" 之后第一个换行符的位置
-                int shaderStart = uboEndPos + uboEndMarker.length();
-                // 跳过所有换行符
-                while (shaderStart < result.length() && result.charAt(shaderStart) == '\n') {
-                    shaderStart++;
+                // 找到该行之后的第一个换行符（即下一行的开始）
+                int uboEndLinePos = result.indexOf("\n", uboEndPos);
+                if (uboEndLinePos == -1) {
+                    uboEndLinePos = result.length();
+                } else {
+                    uboEndLinePos++; // 跳过换行符
                 }
                 
-                String uboBlock = result.substring(0, shaderStart);
-                String shaderCode = result.substring(shaderStart);
+                String uboBlock = result.substring(0, uboEndLinePos);
+                String shaderCode = result.substring(uboEndLinePos);
                 
                 // 在 shaderCode 中查找并替换
                 Iris.logger.info("[Iris-Metal] Before replace: shaderCode length = {}, contains {} = {}", 
