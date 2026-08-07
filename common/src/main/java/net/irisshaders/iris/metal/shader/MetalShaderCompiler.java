@@ -88,9 +88,6 @@ public final class MetalShaderCompiler {
      * @param glslSource GLSL 源码（已完成 Iris 预处理和 transformer 变换）
      * @return 编译结果，包含 MSL 源码或错误信息
      */
-    // MSL 代码大小限制（500KB），超过此大小认为 shader 有问题
-    private static final int MAX_MSL_SIZE = 500 * 1024;
-    
     public static CompileResult compileGlslToMsl(String name, ShaderType type, String glslSource) {
         // 调试日志：打印 shader 前 500 字符
         if (glslSource != null && glslSource.length() > 0) {
@@ -120,13 +117,6 @@ public final class MetalShaderCompiler {
             String msl = SPIRVToMslConverter.convert(spirv, MSL_VERSION_3_0);
             if (msl == null || msl.isEmpty()) {
                 return CompileResult.failure("SPIRV-Cross returned empty MSL for " + name);
-            }
-            
-            // 检查 MSL 代码大小
-            if (msl.length() > MAX_MSL_SIZE) {
-                Iris.logger.error("[Iris-Metal] MSL code too large for {}: {} bytes (max {}). This shader may be incompatible with Metal backend.",
-                    name, msl.length(), MAX_MSL_SIZE);
-                return CompileResult.failure("MSL code too large for " + name + ": " + msl.length() + " bytes");
             }
             
             Iris.logger.info("[Iris-Metal] MSL compilation succeeded for {}, MSL length={}", name, msl.length());

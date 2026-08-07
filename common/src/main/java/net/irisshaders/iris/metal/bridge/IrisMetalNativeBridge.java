@@ -488,12 +488,23 @@ public final class IrisMetalNativeBridge {
     // 辅助方法：分配UTF-8字符串到内存段 (Java 22+兼容)
     private static MemorySegment allocateUtf8String(String str) {
         byte[] bytes = str.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        MemorySegment segment = GLOBAL_STRING_ARENA.allocate(bytes.length + 1);
-        segment.set(ValueLayout.JAVA_BYTE, 0, (byte) 0);  // null terminator
-        for (int i = 0; i < bytes.length; i++) {
-            segment.set(ValueLayout.JAVA_BYTE, i, bytes[i]);
+        // 使用受限 Arena，与 metallum 保持一致
+        // 在 iOS 上，Arena.global() 可能有内存限制
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment segment = arena.allocate(bytes.length + 1);
+            segment.set(ValueLayout.JAVA_BYTE, 0, (byte) 0);  // null terminator
+            for (int i = 0; i < bytes.length; i++) {
+                segment.set(ValueLayout.JAVA_BYTE, i, bytes[i]);
+            }
+            // 返回 scope 外的 segment 需要手动复制
+            // 或者返回 arena 内的 segment（会在方法返回后失效）
+            // 但由于我们使用 try-with-resources，arena 会在方法返回后关闭
+            // 所以我们需要将数据复制到全局 arena
+            MemorySegment globalSegment = GLOBAL_STRING_ARENA.allocate(bytes.length + 1);
+            globalSegment.copyFrom(segment);
+            globalSegment.set(ValueLayout.JAVA_BYTE, bytes.length, (byte) 0);
+            return globalSegment;
         }
-        return segment;
     }
 
     public static void releaseObject(MemorySegment handle) {
@@ -1554,31 +1565,36 @@ public final class IrisMetalNativeBridge {
             return MemorySegment.NULL;
         }
         
-        MemorySegment source = MemorySegment.NULL;
-        MemorySegment entry = MemorySegment.NULL;
-        
         try {
             Iris.logger.info("[Iris-Metal] compileMslToLibrary: MSL source length = {}, label = {}", mslSource.length(), label);
             
-            // 分配字符串内存
-            try {
-                source = allocateUtf8String(mslSource);
-                entry = allocateUtf8String("main0");
-            } catch (Exception e) {
-                Iris.logger.error("[Iris-Metal] Failed to allocate strings for MSL: {}", e.getMessage());
-                return MemorySegment.NULL;
+            // 使用受限 Arena，与 metallum 保持一致
+            // 在 iOS 上，Arena.global() 可能有内存限制
+            try (Arena arena = Arena.ofConfined()) {
+                // 分配字符串内存
+                byte[] sourceBytes = mslSource.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                byte[] entryBytes = "main0".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                
+                MemorySegment source = arena.allocate(sourceBytes.length + 1);
+                for (int i = 0; i < sourceBytes.length; i++) {
+                    source.set(ValueLayout.JAVA_BYTE, i, sourceBytes[i]);
+                }
+                source.set(ValueLayout.JAVA_BYTE, sourceBytes.length, (byte) 0);
+                
+                MemorySegment entry = arena.allocate(entryBytes.length + 1);
+                for (int i = 0; i < entryBytes.length; i++) {
+                    entry.set(ValueLayout.JAVA_BYTE, i, entryBytes[i]);
+                }
+                entry.set(ValueLayout.JAVA_BYTE, entryBytes.length, (byte) 0);
+                
+                Iris.logger.info("[Iris-Metal] compileMslToLibrary: Calling metallum_create_shader_function...");
+                MemorySegment function = (MemorySegment) createShaderFunction.invoke(device, source, entry);
+                Iris.logger.info("[Iris-Metal] compileMslToLibrary: metallum_create_shader_function returned, isNull={}", isNullHandle(function));
+                return function;
             }
-            
-            Iris.logger.info("[Iris-Metal] compileMslToLibrary: Calling metallum_create_shader_function...");
-            MemorySegment function = (MemorySegment) createShaderFunction.invoke(device, source, entry);
-            Iris.logger.info("[Iris-Metal] compileMslToLibrary: metallum_create_shader_function returned, isNull={}", isNullHandle(function));
-            return function;
         } catch (Throwable t) {
             Iris.logger.error("[Iris-Metal] Failed to compile MSL to library: " + label, t);
             return MemorySegment.NULL;
-        } finally {
-            // 释放临时字符串内存（但保留 function 句柄）
-            // 注意：source 和 entry 的内存会在 Arena 清理时自动释放
         }
     }
 
