@@ -317,45 +317,72 @@ public final class MetalShaderCompiler {
     
     /**
      * 替换 shader 代码中对 uniform 变量的直接引用为 block 实例成员访问
+     * 只替换 uniform 声明之外的引用
      */
     private static String replaceUniformReference(String source, String varName) {
-        // 使用正则替换，但要避免替换 uniform 声明中的变量名
-        // 匹配模式：在 uniform 声明之外的 varName 引用
-        String pattern = "\\b(?<!uniform\\s)(?<![a-zA-Z_])" + Pattern.quote(varName) + "\\b";
+        // 查找所有 varName 的出现位置
+        StringBuilder result = new StringBuilder();
+        int lastIndex = 0;
+        int searchIndex = 0;
         
-        // 检查是否有这个变量的引用（除了 uniform 声明）
-        Pattern p = Pattern.compile(pattern);
-        Matcher m = p.matcher(source);
-        if (!m.find()) {
-            return source;
-        }
-        
-        // 替换所有引用（除了 uniform 声明行）
-        StringBuilder sb = new StringBuilder();
-        int lastEnd = 0;
-        m.reset();
-        
-        while (m.find()) {
-            int start = m.start();
-            int end = m.end();
+        while (true) {
+            int found = source.indexOf(varName, searchIndex);
+            if (found == -1) {
+                result.append(source.substring(lastIndex));
+                break;
+            }
             
-            // 检查这行是否是 uniform 声明
-            int lineStart = source.lastIndexOf('\n', start) + 1;
-            int lineEnd = source.indexOf('\n', start);
+            // 检查是否是有效的单词边界
+            if (found > 0) {
+                char prev = source.charAt(found - 1);
+                if (Character.isLetterOrDigit(prev) || prev == '_') {
+                    searchIndex = found + 1;
+                    continue;
+                }
+            }
+            if (found + varName.length() < source.length()) {
+                char next = source.charAt(found + varName.length());
+                if (Character.isLetterOrDigit(next) || next == '_') {
+                    searchIndex = found + 1;
+                    continue;
+                }
+            }
+            
+            // 检查这行是否是 uniform 声明（这一行包含 "uniform "）
+            int lineStart = source.lastIndexOf('\n', found);
+            if (lineStart < 0) lineStart = 0;
+            else lineStart++;
+            int lineEnd = source.indexOf('\n', found);
             if (lineEnd < 0) lineEnd = source.length();
             String line = source.substring(lineStart, lineEnd);
             
-            if (!line.trim().startsWith("uniform ")) {
-                // 替换为 iris_uniforms.varName
-                sb.append(source, lastEnd, start);
-                sb.append("iris_uniforms.");
-                sb.append(varName);
-                lastEnd = end;
+            if (line.trim().startsWith("uniform ")) {
+                // 这是 uniform 声明行，不要替换
+                searchIndex = found + 1;
+                continue;
             }
+            
+            // 也要检查是否在刚刚创建的 MetallumIrisUniforms block 内部
+            // 通过检查前面是否有 "uniform MetallumIrisUniforms"
+            int blockStart = source.lastIndexOf("uniform MetallumIrisUniforms", found);
+            if (blockStart != -1) {
+                int blockEnd = source.indexOf("} iris_uniforms;", blockStart);
+                if (blockEnd != -1 && found < blockEnd) {
+                    // 在 block 内部，不要替换
+                    searchIndex = found + 1;
+                    continue;
+                }
+            }
+            
+            // 替换这个引用
+            result.append(source.substring(lastIndex, found));
+            result.append("iris_uniforms.");
+            result.append(varName);
+            lastIndex = found + varName.length();
+            searchIndex = lastIndex;
         }
-        sb.append(source.substring(lastEnd));
         
-        return sb.toString();
+        return result.toString();
     }
     
     /**
