@@ -447,6 +447,10 @@ public final class IrisMetalNativeBridge {
     public static boolean isNullHandle(MemorySegment handle) {
         return handle == null || handle.address() == 0;
     }
+    
+    private static MemorySegment segment(MemorySegment pointer) {
+        return pointer == null || pointer.address() == 0L ? MemorySegment.NULL : pointer;
+    }
 
     // 检查可选功能是否可用
     public static boolean isTexture3DAvailable() {
@@ -1588,7 +1592,8 @@ public final class IrisMetalNativeBridge {
                 entry.set(ValueLayout.JAVA_BYTE, entryBytes.length, (byte) 0);
                 
                 Iris.logger.info("[Iris-Metal] compileMslToLibrary: Calling metallum_create_shader_function...");
-                MemorySegment function = (MemorySegment) createShaderFunction.invoke(device, source, entry);
+                MemorySegment function = (MemorySegment) createShaderFunction.invokeExact(
+                        segment(device), source, entry);
                 Iris.logger.info("[Iris-Metal] compileMslToLibrary: metallum_create_shader_function returned, isNull={}", isNullHandle(function));
                 return function;
             }
