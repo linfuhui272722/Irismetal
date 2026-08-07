@@ -114,7 +114,9 @@ public final class MetalShaderCompiler {
         // 步骤 2：SPIR-V → MSL（使用 LWJGL SPIRV-Cross）
         try {
             // 使用 MSL 3.0
+            Iris.logger.info("[Iris-Metal] About to call SPIRVToMslConverter.convert for {}", name);
             String msl = SPIRVToMslConverter.convert(spirv, MSL_VERSION_3_0);
+            Iris.logger.info("[Iris-Metal] SPIRVToMslConverter.convert returned for {}", name);
             if (msl == null || msl.isEmpty()) {
                 return CompileResult.failure("SPIRV-Cross returned empty MSL for " + name);
             }
@@ -122,6 +124,7 @@ public final class MetalShaderCompiler {
             Iris.logger.info("[Iris-Metal] MSL compilation succeeded for {}, MSL length={}", name, msl.length());
             return CompileResult.success(msl);
         } catch (Throwable t) {
+            Iris.logger.error("[Iris-Metal] Exception during MSL compilation for " + name, t);
             return CompileResult.failure("SPIRV-Cross invocation failed for " + name + ": " + t.getMessage());
         }
     }

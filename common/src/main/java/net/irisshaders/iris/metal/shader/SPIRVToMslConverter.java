@@ -172,10 +172,10 @@ public final class SPIRVToMslConverter {
                     Iris.logger.info("[Iris-Metal] About to call memUTF8 with sourcePtr={}...", sourcePtr);
                     String msl = org.lwjgl.system.MemoryUtil.memUTF8(sourcePtr);
                     Iris.logger.info("[Iris-Metal] memUTF8 completed, MSL length={}", msl != null ? msl.length() : -1);
+                    Iris.logger.info("[Iris-Metal] SPIRVToMslConverter: About to return MSL");
                     return msl;
-                    
                 } finally {
-                    Spvc.spvc_context_destroy(context);
+                    // options 会随着 compiler 一起被销毁，不需要单独销毁
                 }
                 
             } finally {
