@@ -309,18 +309,22 @@ public final class MetalShaderCompiler {
                     varName = varName.substring(0, varName.indexOf("["));
                 }
                 
-                // 找到 UBO block 的结束位置
-                int uboEndLine = result.indexOf("} iris_uniforms;");
-                if (uboEndLine == -1) {
+                // 在 UBO block 之后的 shader 代码中替换变量引用
+                int uboBlockEnd = result.indexOf("} iris_uniforms;");
+                if (uboBlockEnd == -1) {
                     Iris.logger.warn("[Iris-Metal] UBO end marker not found for {}", varName);
                     continue;
                 }
-                int uboEndPos = result.indexOf("\n", uboEndLine);
-                if (uboEndPos == -1) uboEndPos = result.length();
+                // 从 } iris_uniforms; 之后开始找到第一个换行
+                int shaderStart = result.indexOf("\n", uboBlockEnd);
+                if (shaderStart == -1) {
+                    shaderStart = uboBlockEnd;
+                } else {
+                    shaderStart++; // 跳过换行符
+                }
                 
-                // 在 UBO block 之后的 shader 代码中替换变量引用
-                String uboBlock = result.substring(0, uboEndPos);
-                String shaderCode = result.substring(uboEndPos);
+                String uboBlock = result.substring(0, shaderStart);
+                String shaderCode = result.substring(shaderStart);
                 
                 // 在 shaderCode 中查找并替换
                 String newShaderCode = replaceInShaderCode(shaderCode, varName);
