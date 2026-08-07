@@ -95,10 +95,38 @@ public final class MetalVertexDescriptor {
 
     /**
      * 创建Metal vertex descriptor原生对象。
+     * 
+     * 使用 metallum 的 native 函数创建和配置 vertex descriptor。
      */
     public MemorySegment handle() {
-        // 简化实现：返回NULL，实际需要原生层支持
-        return MemorySegment.NULL;
+        // 创建 vertex descriptor
+        MemorySegment vertexDesc = IrisMetalNativeBridge.createMTLVertexDescriptor();
+        if (IrisMetalNativeBridge.isNullHandle(vertexDesc)) {
+            return MemorySegment.NULL;
+        }
+        
+        // 设置每个 attribute
+        for (Attribute attr : attributes) {
+            IrisMetalNativeBridge.setVertexDescriptorAttribute(
+                vertexDesc, 
+                attr.location, 
+                attr.format, 
+                attr.offset, 
+                attr.bufferIndex
+            );
+        }
+        
+        // 设置 layout（stride 和 step function）
+        // 对于大多数情况，使用 PerVertex step function
+        IrisMetalNativeBridge.setVertexDescriptorLayout(
+            vertexDesc, 
+            0,  // buffer index
+            stride, 
+            STEP_PER_VERTEX, 
+            1   // step rate
+        );
+        
+        return vertexDesc;
     }
 
     public static final class Attribute {
