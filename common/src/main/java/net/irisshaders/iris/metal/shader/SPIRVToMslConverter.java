@@ -93,27 +93,35 @@ public final class SPIRVToMslConverter {
                     return null;
                 }
                 long ir = pIr.get(0);
+                Iris.logger.info("[Iris-Metal] SPIR-V parsed, ir={}", ir);
                 
                 // 创建 MSL 编译器
                 PointerBuffer pCompiler = stack.mallocPointer(1);
+                Iris.logger.info("[Iris-Metal] About to call spvc_context_create_compiler with MSL backend...");
                 result = Spvc.spvc_context_create_compiler(context, Spvc.SPVC_BACKEND_MSL, ir, Spvc.SPVC_CAPTURE_MODE_COPY, pCompiler);
+                Iris.logger.info("[Iris-Metal] spvc_context_create_compiler returned: {}", result);
                 if (result != Spvc.SPVC_SUCCESS) {
                     Iris.logger.warn("Failed to create MSL compiler: {}", result);
                     return null;
                 }
                 long compiler = pCompiler.get(0);
+                Iris.logger.info("[Iris-Metal] MSL compiler created, compiler={}", compiler);
                 
                 try {
                     // 创建选项
                     PointerBuffer pOptions = stack.mallocPointer(1);
+                    Iris.logger.info("[Iris-Metal] About to call spvc_compiler_create_compiler_options...");
                     result = Spvc.spvc_compiler_create_compiler_options(compiler, pOptions);
+                    Iris.logger.info("[Iris-Metal] spvc_compiler_create_compiler_options returned: {}", result);
                     if (result != Spvc.SPVC_SUCCESS) {
                         Iris.logger.warn("Failed to create compiler options: {}", result);
                         return null;
                     }
                     long options = pOptions.get(0);
+                    Iris.logger.info("[Iris-Metal] Options created, options={}", options);
                     
                     // 设置 MSL 选项
+                    Iris.logger.info("[Iris-Metal] Setting MSL options: platform=MACOS, version={}", mslVersion > 0 ? mslVersion : MSL_VERSION_3_0);
                     Spvc.spvc_compiler_options_set_uint(options, Spvc.SPVC_COMPILER_OPTION_MSL_PLATFORM, Spvc.SPVC_MSL_PLATFORM_MACOS);
                     Spvc.spvc_compiler_options_set_uint(options, Spvc.SPVC_COMPILER_OPTION_MSL_VERSION, mslVersion > 0 ? mslVersion : MSL_VERSION_3_0);
                     Spvc.spvc_compiler_options_set_bool(options, Spvc.SPVC_COMPILER_OPTION_MSL_ENABLE_DECORATION_BINDING, true);
@@ -121,22 +129,28 @@ public final class SPIRVToMslConverter {
                     Spvc.spvc_compiler_options_set_bool(options, Spvc.SPVC_COMPILER_OPTION_FLIP_VERTEX_Y, true);
                     
                     // 安装选项
+                    Iris.logger.info("[Iris-Metal] About to call spvc_compiler_install_compiler_options...");
                     result = Spvc.spvc_compiler_install_compiler_options(compiler, options);
+                    Iris.logger.info("[Iris-Metal] spvc_compiler_install_compiler_options returned: {}", result);
                     if (result != Spvc.SPVC_SUCCESS) {
                         Iris.logger.warn("Failed to install compiler options: {}", result);
                         return null;
                     }
                     
                     // 获取活跃的接口变量
+                    Iris.logger.info("[Iris-Metal] About to call spvc_compiler_get_active_interface_variables...");
                     PointerBuffer pActiveSet = stack.mallocPointer(1);
                     result = Spvc.spvc_compiler_get_active_interface_variables(compiler, pActiveSet);
+                    Iris.logger.info("[Iris-Metal] spvc_compiler_get_active_interface_variables returned: {}", result);
                     if (result == Spvc.SPVC_SUCCESS) {
                         Spvc.spvc_compiler_set_enabled_interface_variables(compiler, pActiveSet.get(0));
                     }
                     
                     // 编译
+                    Iris.logger.info("[Iris-Metal] About to call spvc_compiler_compile...");
                     PointerBuffer pSource = stack.mallocPointer(1);
                     result = Spvc.spvc_compiler_compile(compiler, pSource);
+                    Iris.logger.info("[Iris-Metal] spvc_compiler_compile returned: {}", result);
                     if (result != Spvc.SPVC_SUCCESS) {
                         Iris.logger.warn("Failed to compile: {}", result);
                         return null;
