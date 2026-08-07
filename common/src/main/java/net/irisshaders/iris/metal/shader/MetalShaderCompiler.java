@@ -233,6 +233,18 @@ public final class MetalShaderCompiler {
             Iris.logger.info("[Iris-Metal] Upgraded shader from #version 330 to #version 450");
         }
 
+        // 处理 gl_VertexID - Shaderc 在 #version 330 中需要显式声明
+        // 使用 in int gl_VertexID; 声明，Metal 会自动提供
+        if (type == ShaderType.VERTEX && result.contains("gl_VertexID")) {
+            // 在第一个 uniform 块之前添加声明
+            int firstUniformPos = result.indexOf("uniform ");
+            if (firstUniformPos > 0) {
+                result = result.substring(0, firstUniformPos) + 
+                         "in int gl_VertexID;\n" + 
+                         result.substring(firstUniformPos);
+                Iris.logger.info("[Iris-Metal] Added in int gl_VertexID declaration");
+            }
+        }
 
         // 收集所有 loose uniform 并创建 MetallumIrisUniforms block
         // 注意：wrapLooseUniforms 会处理 dhMaterialId 和 dhRenderDistance 等 uniforms
