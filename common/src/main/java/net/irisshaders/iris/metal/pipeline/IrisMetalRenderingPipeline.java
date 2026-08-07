@@ -374,9 +374,8 @@ public class IrisMetalRenderingPipeline implements WorldRenderingPipeline, Shade
             }
             
             try {
-                MetalVertexDescriptor vertexDesc = MetalVertexDescriptor.createTerrain();
                 MetalBlendState blendState = createBlendState(source);
-                
+
                 int[] colorFormats = new int[8];
                 for (int i = 0; i < 8; i++) {
                     if (gbuffersColorTextures[i] != null) {
@@ -384,17 +383,17 @@ public class IrisMetalRenderingPipeline implements WorldRenderingPipeline, Shade
                     }
                 }
                 int depthFormat = gbuffersDepthTexture != null ? gbuffersDepthTexture.mtlPixelFormat() : 0;
-                
+
                 // Transform shader sources using TransformPatcher
                 // This converts OpenGL GLSL to Vulkan-compatible GLSL
                 AlphaTest alpha = source.getDirectives().getAlphaTestOverride().orElse(AlphaTest.ALWAYS);
                 boolean isLines = programId == ProgramId.Line;
                 boolean isClouds = programId == ProgramId.Clouds;
                 ShaderAttributeInputs inputs = new ShaderAttributeInputs(DefaultVertexFormat.BLOCK, false, isLines, false, false, false);
-                
-                Object2ObjectMap<Tri<String, net.irisshaders.iris.gl.texture.TextureType, TextureStage>, String> textureMap = 
+
+                Object2ObjectMap<Tri<String, net.irisshaders.iris.gl.texture.TextureType, TextureStage>, String> textureMap =
                     programSet.getPackDirectives().getTextureMap();
-                
+
                 Map<PatchShaderType, String> transformed = TransformPatcher.patchVanilla(
                     source.getName(),
                     source.getVertexSource().orElse(""),
@@ -404,10 +403,14 @@ public class IrisMetalRenderingPipeline implements WorldRenderingPipeline, Shade
                     source.getFragmentSource().orElse(""),
                     alpha, isLines, isClouds, true, inputs, textureMap
                 );
-                
+
                 String vertexSource = transformed.get(PatchShaderType.VERTEX);
                 String fragmentSource = transformed.get(PatchShaderType.FRAGMENT);
-                
+
+                // 根据 shader 源码动态创建 vertex descriptor
+                // 这样可以正确处理不同 shader 使用的不同 attribute 顺序和格式
+                MetalVertexDescriptor vertexDesc = MetalVertexDescriptor.fromShaderSource(vertexSource);
+
                 MetalCompiledProgram program = MetalCompiledProgram.create(
                     source.getName(),
                     vertexSource,
