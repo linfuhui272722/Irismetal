@@ -272,21 +272,26 @@ public final class MetalShaderCompiler {
             body.append(line).append("\n");
         }
         
-        // 如果没有 block uniform，或者已经存在 MetallumIrisUniforms block，直接返回
-        if (blockUniforms.isEmpty() || hasExistingMetallumBlock) {
-            if (hasExistingMetallumBlock) {
-                Iris.logger.info("[Iris-Metal] MetallumIrisUniforms block already exists, skipping block creation");
-            }
+        // 如果已经存在 MetallumIrisUniforms block，直接返回
+        if (hasExistingMetallumBlock) {
+            Iris.logger.info("[Iris-Metal] MetallumIrisUniforms block already exists, skipping uniform wrapping");
             return source;
         }
         
-        // 创建 MetallumIrisUniforms block（注意：block 名称和实例名称都是 MetallumIrisUniforms）
+        // 如果没有 block uniform，也直接返回
+        if (blockUniforms.isEmpty()) {
+            return source;
+        }
+        
+        // 创建 MetallumIrisUniforms block
+        // 注意：block 名称必须是 MetallumIrisUniforms（metallum 期望这个名字）
+        // 实例名称使用 iris_uniforms（与 metallum 中的命名一致）
         StringBuilder block = new StringBuilder();
         block.append("layout(std140) uniform MetallumIrisUniforms {\n");
         for (String uniform : blockUniforms) {
             block.append("    ").append(uniform).append(";\n");
         }
-        block.append("} MetallumIrisUniforms;\n\n");
+        block.append("} iris_uniforms;\n\n");
         
         // 在 directive prelude 之后插入 block
         String shaderBody = body.toString();
