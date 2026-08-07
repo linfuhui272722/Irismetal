@@ -319,14 +319,16 @@ public final class MetalShaderCompiler {
                 
                 // 在 UBO block 之后的 shader 代码中替换变量引用
                 // UBO block 格式: "\nlayout(...) uniform MetallumIrisUniforms {\n    ...\n} iris_uniforms;\n\n"
-                // 我们需要找到第一个非换行字符的位置（跳过双换行后的空行）
-                int uboBlockEnd = result.indexOf("} iris_uniforms;");
-                if (uboBlockEnd == -1) {
+                // 我们需要找到 "} iris_uniforms;" 之后第一个非换行字符的位置
+                String uboEndMarker = "} iris_uniforms;";
+                int uboEndPos = result.indexOf(uboEndMarker);
+                if (uboEndPos == -1) {
                     Iris.logger.warn("[Iris-Metal] UBO end marker not found for {}", varName);
                     continue;
                 }
-                // 跳过 "} iris_uniforms;" 之后的所有换行符，直到找到实际代码
-                int shaderStart = uboBlockEnd + 2; // skip ";\n"
+                // shaderStart 是 "} iris_uniforms;" 之后第一个换行符的位置
+                int shaderStart = uboEndPos + uboEndMarker.length();
+                // 跳过所有换行符
                 while (shaderStart < result.length() && result.charAt(shaderStart) == '\n') {
                     shaderStart++;
                 }
@@ -364,79 +366,44 @@ public final class MetalShaderCompiler {
     /**
      * 在 shader 代码中替换 uniform 变量引用
      * 只替换不在 uniform 声明行中的引用
+     * 使用简单的字符串替换，但确保只替换完整的单词
      */
     private static String replaceInShaderCode(String shaderCode, String varName) {
+        // 简单的正则表达式替换：\bvarName\b 但排除 uniform 声明行
+        // 我们逐行处理
         StringBuilder result = new StringBuilder();
-        int searchFrom = 0;
+        String[] lines = shaderCode.split("\n", -1);
         
-        while (true) {
-            int found = shaderCode.indexOf(varName, searchFrom);
-            if (found == -1) {
-                result.append(shaderCode.substring(searchFrom));
-                break;
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            
+            // 检查是否是 uniform 声明行
+            String trimmedLine = line.trim();
+            if (trimmedLine.startsWith("uniform ") || trimmedLine.startsWith("layout(")) {
+                // uniform 声明行，跳过
+                result.append(line);
+            } else {
+                // 替换行中的变量引用（确保是完整单词）
+                line = replaceWordInLine(line, varName);
+                result.append(line);
             }
             
-            // 检查是否是有效的单词边界
-            if (found > 0) {
-                char prev = shaderCode.charAt(found - 1);
-                if (Character.isLetterOrDigit(prev) || prev == '_') {
-                    searchFrom = found + 1;
-                    continue;
-                }
+            if (i < lines.length - 1) {
+                result.append("\n");
             }
-            if (found + varName.length() < shaderCode.length()) {
-                char next = shaderCode.charAt(found + varName.length());
-                if (Character.isLetterOrDigit(next) || next == '_') {
-                    searchFrom = found + 1;
-                    continue;
-                }
-            }
-            
-            // 检查这行是否是 uniform 声明（从行首到变量名之前都是 whitespace 或 layout）
-            int lineStart = shaderCode.lastIndexOf('\n', found);
-            if (lineStart < 0) lineStart = 0;
-            else lineStart++;
-            String lineContent = shaderCode.substring(lineStart, found);
-            
-            // 检查行内容是否包含 uniform 关键字
-            // uniform 声明的格式是 "uniform type name;" 或 "layout(...) uniform type name;"
-            boolean isUniformDeclaration = false;
-            int layoutPos = lineContent.indexOf("layout(");
-            int uniformPos = lineContent.indexOf("uniform ");
-            
-            if (uniformPos >= 0) {
-                // 找到 uniform，检查它后面是否是类型名和变量名
-                String afterUniform = lineContent.substring(uniformPos + 8).trim();
-                // 检查 afterUniform 是否以变量名开头或包含空格后跟变量名
-                if (afterUniform.startsWith(varName) || 
-                    (afterUniform.contains(" ") && afterUniform.substring(afterUniform.indexOf(" ") + 1).trim().startsWith(varName))) {
-                    isUniformDeclaration = true;
-                }
-            } else if (layoutPos >= 0) {
-                // 检查 layout(...) 后面的内容是否是 uniform 声明
-                int afterLayout = lineContent.indexOf("}", layoutPos);
-                if (afterLayout >= 0) {
-                    String afterBrace = lineContent.substring(afterLayout + 1).trim();
-                    if (afterBrace.startsWith("uniform ")) {
-                        isUniformDeclaration = true;
-                    }
-                }
-            }
-            
-            if (isUniformDeclaration) {
-                // uniform 声明行，不要替换
-                searchFrom = found + 1;
-                continue;
-            }
-            
-            // 替换这个引用
-            result.append(shaderCode.substring(searchFrom, found));
-            result.append("iris_uniforms.");
-            result.append(varName);
-            searchFrom = found + varName.length();
         }
         
         return result.toString();
+    }
+    
+    /**
+     * 在一行代码中替换变量名（确保是完整单词）
+     */
+    private static String replaceWordInLine(String line, String varName) {
+        // 使用正则表达式匹配完整单词
+        // 单词边界：前面不是字母、数字、下划线，后面也不是
+        String pattern = "(?<![\\w])" + varName + "(?![\\w])";
+        return line.replaceAll(pattern, "iris_uniforms." + varName);
     }
     
     /**
