@@ -341,6 +341,11 @@ public final class MetalShaderCompiler {
                 Iris.logger.info("[Iris-Metal] Before replace: shaderCode length = {}, contains {} = {}", 
                     shaderCode.length(), varName, countOccurrences(shaderCode, varName));
                 
+                // 调试：打印 shaderCode 的前 300 字符
+                if (shaderCode.length() > 300) {
+                    Iris.logger.info("[Iris-Metal] shaderCode head: {}", shaderCode.substring(0, 300));
+                }
+                
                 // 调试：打印 shaderCode 的最后 300 字符
                 if (shaderCode.length() > 300) {
                     Iris.logger.info("[Iris-Metal] shaderCode tail: {}", shaderCode.substring(shaderCode.length() - 300));
@@ -353,16 +358,16 @@ public final class MetalShaderCompiler {
                     Iris.logger.info("[Iris-Metal] Replaced {} occurrences of {}", replaceCount, varName);
                 }
                 
-                Iris.logger.info("[Iris-Metal] After replace: newShaderCode length = {}", newShaderCode.length());
-                
                 result = uboBlock + newShaderCode;
-                Iris.logger.info("[Iris-Metal] Final result length = {}", result.length());
             }
         }
         
-        // 调试：打印完整结果的最后 500 字符
-        if (result.length() > 500) {
-            Iris.logger.info("[Iris-Metal] Result tail: {}", result.substring(result.length() - 500));
+        // 调试：打印完整结果的最后 1000 字符
+        if (result.length() > 1000) {
+            String tail = result.substring(result.length() - 1000);
+            Iris.logger.info("[Iris-Metal] Result last 1000 chars:\n{}", tail);
+        } else {
+            Iris.logger.info("[Iris-Metal] Complete result:\n{}", result);
         }
         
         return result;
