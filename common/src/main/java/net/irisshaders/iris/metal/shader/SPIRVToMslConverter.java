@@ -28,9 +28,11 @@ public final class SPIRVToMslConverter {
             java.lang.reflect.Method ensureMethod = metalNativeBridge.getMethod("ensureSpvcLibraryConfigured");
             ensureMethod.invoke(null);
             
-            // Spvc 类会在首次使用时自动加载
-            // 我们不手动触发类初始化，让 JVM 按需加载
-            Iris.logger.info("[Iris-Metal] Metallum SPIR-V library configuration ensured");
+            // 加载 Spvc 类 - 这会触发类初始化，Spvc.SPVC static 字段会加载 native 库
+            // 由于 ensureSpvcLibraryConfigured() 已经设置好了 Configuration.SPVC_LIBRARY_NAME，
+            // Spvc 类会加载 metallum 的 libspvc_metallum.dylib
+            Class<?> spvcClass = Class.forName("org.lwjgl.util.spvc.Spvc");
+            Iris.logger.info("[Iris-Metal] Spvc class loaded successfully");
         } catch (ClassNotFoundException e) {
             // metallum 未安装，SPIR-V 到 MSL 转换不可用
             Iris.logger.warn("Metallum not found, SPIR-V to MSL conversion unavailable");
