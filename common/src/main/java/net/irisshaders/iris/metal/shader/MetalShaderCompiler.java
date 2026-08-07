@@ -246,22 +246,34 @@ public final class MetalShaderCompiler {
             }
         }
 
-        // 为 DH (Distant Horizons) shader 声明缺失的 uniforms
-        // DH shader 使用 dhMaterialId 和 dhRenderDistance 但没有声明
-        if (result.contains("dhMaterialId") && !result.contains("uniform int dhMaterialId")) {
-            int insertPos = findDirectivePreludeEnd(result);
-            String dhUniformsDecl = "// Distant Horizons compatibility: declare DH uniforms\nuniform int dhMaterialId;\nuniform float dhRenderDistance;\n\n";
-            result = result.substring(0, insertPos) + dhUniformsDecl + result.substring(insertPos);
-            Iris.logger.info("[Iris-Metal] Added dhMaterialId and dhRenderDistance declarations for DH compatibility");
-        } else if (result.contains("dhRenderDistance") && !result.contains("uniform float dhRenderDistance")) {
-            int insertPos = findDirectivePreludeEnd(result);
-            String dhUniformsDecl = "// Distant Horizons compatibility: declare DH uniforms\nuniform float dhRenderDistance;\n\n";
-            result = result.substring(0, insertPos) + dhUniformsDecl + result.substring(insertPos);
-            Iris.logger.info("[Iris-Metal] Added dhRenderDistance declaration for DH compatibility");
-        }
-
         // 收集所有 loose uniform 并创建 MetallumIrisUniforms block
+        // 注意：wrapLooseUniforms 会处理 dhMaterialId 和 dhRenderDistance 等 uniforms
+        // 如果它们已经作为 loose uniforms 存在，会被自动移到 MetallumIrisUniforms 中
         result = wrapLooseUniforms(result);
+
+        // 为 DH (Distant Horizons) shader 声明缺失的 uniforms
+        // 在 wrapLooseUniforms 之后检查，因为 loose uniforms 可能已经被处理
+        // 注意：只添加那些没有被 wrapLooseUniforms 处理过的 uniforms
+        // 检查 MetallumIrisUniforms block 是否已经有这些 uniforms
+        int blockStart = result.indexOf("uniform MetallumIrisUniforms");
+        int blockEnd = result.indexOf("} iris_uniforms;");
+        if (blockStart >= 0 && blockEnd > blockStart) {
+            String blockContent = result.substring(blockStart, blockEnd);
+            // 检查 dhMaterialId 是否在 block 中
+            if (!blockContent.contains("dhMaterialId") && result.contains("dhMaterialId")) {
+                int insertPos = blockEnd;
+                String dhUniformDecl = "\n    int dhMaterialId;";
+                result = result.substring(0, insertPos) + dhUniformDecl + result.substring(insertPos);
+                Iris.logger.info("[Iris-Metal] Added dhMaterialId to MetallumIrisUniforms block");
+            }
+            // 检查 dhRenderDistance 是否在 block 中
+            if (!blockContent.contains("dhRenderDistance") && result.contains("dhRenderDistance")) {
+                int insertPos = blockEnd;
+                String dhUniformDecl = "\n    float dhRenderDistance;";
+                result = result.substring(0, insertPos) + dhUniformDecl + result.substring(insertPos);
+                Iris.logger.info("[Iris-Metal] Added dhRenderDistance to MetallumIrisUniforms block");
+            }
+        }
         
         // 打印转换后的 shader 预览（增加长度，并写入文件以避免日志截断）
         int previewLength = Math.min(3000, result.length());
