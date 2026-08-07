@@ -1673,11 +1673,22 @@ public final class IrisMetalNativeBridge {
     }
 
     public static void setPipelineVertexDescriptor(MemorySegment descriptor, MemorySegment vertexDescriptor) {
-        if (renderPipelineDescriptorSetVertexDescriptor == null || isNullHandle(descriptor) || isNullHandle(vertexDescriptor)) {
+        if (isNullHandle(descriptor)) {
+            Iris.logger.error("[Iris-Metal] setPipelineVertexDescriptor: descriptor is null");
+            return;
+        }
+        if (isNullHandle(vertexDescriptor)) {
+            Iris.logger.error("[Iris-Metal] setPipelineVertexDescriptor: vertexDescriptor is null");
+            return;
+        }
+        if (renderPipelineDescriptorSetVertexDescriptor == null) {
+            Iris.logger.error("[Iris-Metal] setPipelineVertexDescriptor: method handle is null");
             return;
         }
         try {
+            Iris.logger.info("[Iris-Metal] setPipelineVertexDescriptor: descriptor={}, vertexDescriptor={}", descriptor.address(), vertexDescriptor.address());
             renderPipelineDescriptorSetVertexDescriptor.invoke(descriptor, vertexDescriptor);
+            Iris.logger.info("[Iris-Metal] setPipelineVertexDescriptor: success");
         } catch (Throwable t) {
             Iris.logger.warn("Failed to set vertex descriptor", t);
         }
