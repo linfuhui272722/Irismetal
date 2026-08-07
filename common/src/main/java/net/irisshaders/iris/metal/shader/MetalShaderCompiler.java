@@ -343,14 +343,15 @@ public final class MetalShaderCompiler {
                 
                 // 调试：检查 shaderCode 的内容
                 if (shaderCode.length() > 0) {
-                    char firstChar = shaderCode.charAt(0);
-                    char lastChar = shaderCode.charAt(shaderCode.length() - 1);
-                    Iris.logger.info("[Iris-Metal] shaderCode: first='{}', last='{}', contains sunPathRotation={}", 
-                        String.valueOf(firstChar), String.valueOf(lastChar), 
-                        shaderCode.contains("sunPathRotation"));
-                    // 打印 shaderCode 的前 100 字符
-                    int printLen = Math.min(100, shaderCode.length());
-                    Iris.logger.info("[Iris-Metal] shaderCode first {} chars: [{}]", printLen, shaderCode.substring(0, printLen));
+                    boolean hasSunPath = shaderCode.contains("sunPathRotation");
+                    boolean hasMain = shaderCode.contains("void main()");
+                    boolean hasConst = shaderCode.contains("const float");
+                    Iris.logger.info("[Iris-Metal] shaderCode check: has sunPathRotation={}, has main()={}, has const={}, starts with newline={}", 
+                        hasSunPath, hasMain, hasConst, shaderCode.charAt(0) == '\n');
+                    // 打印 shaderCode 的前 200 字符（用 \\n 替换换行符以便日志显示）
+                    int printLen = Math.min(200, shaderCode.length());
+                    String head = shaderCode.substring(0, printLen).replace("\n", "\\n").replace("\r", "\\r");
+                    Iris.logger.info("[Iris-Metal] shaderCode head (first {}): [{}]", printLen, head);
                 } else {
                     Iris.logger.warn("[Iris-Metal] shaderCode is EMPTY!");
                 }
@@ -366,12 +367,13 @@ public final class MetalShaderCompiler {
             }
         }
         
-        // 调试：打印完整结果的最后 1000 字符
-        if (result.length() > 1000) {
-            String tail = result.substring(result.length() - 1000);
-            Iris.logger.info("[Iris-Metal] Result last 1000 chars:\n{}", tail);
+        // 调试：打印完整结果的最后 1500 字符（用 \\n 替换换行符以便日志显示）
+        if (result.length() > 1500) {
+            String tail = result.substring(result.length() - 1500).replace("\n", "\\n").replace("\r", "\\r");
+            Iris.logger.info("[Iris-Metal] Result last 1500 chars (newlines replaced): [{}]", tail);
         } else {
-            Iris.logger.info("[Iris-Metal] Complete result:\n{}", result);
+            String fullResult = result.replace("\n", "\\n").replace("\r", "\\r");
+            Iris.logger.info("[Iris-Metal] Complete result (newlines replaced): [{}]", fullResult);
         }
         
         return result;
