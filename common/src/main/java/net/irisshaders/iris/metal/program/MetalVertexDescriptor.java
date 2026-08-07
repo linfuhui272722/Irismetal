@@ -61,8 +61,9 @@ public final class MetalVertexDescriptor {
                 new Attribute(2, FORMAT_FLOAT2, 16, 0),           // uv0 (texture)
                 new Attribute(3, FORMAT_USHORT2_NORMALIZED, 24, 0),// uv1 (lightmap)
                 new Attribute(4, FORMAT_CHAR3_NORMALIZED, 28, 0), // normal
+                new Attribute(5, FORMAT_FLOAT4, 32, 0),          // mc_Entity (vec4)
         };
-        return new MetalVertexDescriptor(attrs, 32);
+        return new MetalVertexDescriptor(attrs, 48);
     }
 
     /**
