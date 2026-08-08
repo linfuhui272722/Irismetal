@@ -46,7 +46,7 @@ public class EntityPatcher {
 				"uniform sampler2D iris_overlay;",
 				"out vec4 entityColor;",
 				"out vec4 iris_vertexColor;",
-				parameters.inputs.isIE() ? "uniform ivec2 iris_OverlayUV;" : "in ivec2 iris_UV1;");
+				parameters.inputs.isIE() ? "uniform vec2 iris_OverlayUV;" : "in vec2 iris_UV1;");
 
 			// Create our own main function to wrap the existing main function, so that we
 			// can pass through the overlay color at the end to the geometry or fragment

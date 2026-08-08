@@ -94,13 +94,13 @@ public class VanillaTransformer {
 					"vec4(iris_LightUV, 0.0, 1.0)");
 
 				tree.parseAndInjectNode(t, ASTInjectionPoint.BEFORE_DECLARATIONS,
-					"uniform ivec2 iris_LightUV;");
+					"uniform vec2 iris_LightUV;");
 			} else if (parameters.inputs.hasLight()) {
 				root.replaceReferenceExpressions(t, "gl_MultiTexCoord1",
 					"vec4(iris_UV2, 0.0, 1.0)");
 
 				tree.parseAndInjectNode(t, ASTInjectionPoint.BEFORE_DECLARATIONS,
-					"in ivec2 iris_UV2;");
+					"in vec2 iris_UV2;");
 			} else {
 				root.replaceReferenceExpressions(t, "gl_MultiTexCoord1",
 					"vec4(240.0, 240.0, 0.0, 1.0)");
