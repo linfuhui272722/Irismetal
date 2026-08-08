@@ -237,12 +237,15 @@ public final class MetalShaderCompiler {
         // 使用 in int gl_VertexID; 声明，Metal 会自动提供
         if (type == ShaderType.VERTEX && result.contains("gl_VertexID")) {
             result = result.replace("gl_VertexID", "iris_VertexID");
-            // 在第一个 uniform 块之前添加声明
-            int firstUniformPos = result.indexOf("uniform ");
-            if (firstUniformPos > 0) {
-                result = result.substring(0, firstUniformPos) + 
-                         "in int iris_VertexID;\n" + 
-                         result.substring(firstUniformPos);
+            // 在指令前导（#version / #extension 等）之后插入声明。
+            // 不能用 indexOf("uniform ") 定位——那会匹配到 "layout(std140) uniform xxx"
+            // 中的 uniform 关键字，把声明插到 layout(...) 和 uniform 之间，
+            // 产生非法的 "layout(std140) in int iris_VertexID;"（packing 限定符不能用于 in）。
+            int vertexIdInsertPos = findDirectivePreludeEnd(result);
+            if (vertexIdInsertPos >= 0) {
+                result = result.substring(0, vertexIdInsertPos) +
+                         "in int iris_VertexID;\n" +
+                         result.substring(vertexIdInsertPos);
                 Iris.logger.info("[Iris-Metal] Renamed gl_VertexID to iris_VertexID declaration");
             }
         }
@@ -262,16 +265,28 @@ public final class MetalShaderCompiler {
             String blockContent = result.substring(blockStart, blockEnd);
             // 检查 dhMaterialId 是否在 block 中
             if (!blockContent.contains("dhMaterialId") && result.contains("dhMaterialId")) {
-                int insertPos = blockEnd;
                 String dhUniformDecl = "\n    int dhMaterialId;";
-                result = result.substring(0, insertPos) + dhUniformDecl + result.substring(insertPos);
+                result = result.substring(0, blockEnd) + dhUniformDecl + result.substring(blockEnd);
+                blockEnd += dhUniformDecl.length();
+                // wrapLooseUniforms 已经跑完，dhMaterialId 的引用不会被自动改写，
+                // 需要手动把 UBO 块之后的裸引用改写为 iris_uniforms.dhMaterialId
+                int bodyStart = result.indexOf("\n", blockEnd) + 1;
+                if (bodyStart > 0) {
+                    result = result.substring(0, bodyStart) +
+                             replaceInShaderCode(result.substring(bodyStart), "dhMaterialId");
+                }
                 Iris.logger.info("[Iris-Metal] Added dhMaterialId to MetallumIrisUniforms block");
             }
             // 检查 dhRenderDistance 是否在 block 中
             if (!blockContent.contains("dhRenderDistance") && result.contains("dhRenderDistance")) {
-                int insertPos = blockEnd;
                 String dhUniformDecl = "\n    float dhRenderDistance;";
-                result = result.substring(0, insertPos) + dhUniformDecl + result.substring(insertPos);
+                result = result.substring(0, blockEnd) + dhUniformDecl + result.substring(blockEnd);
+                blockEnd += dhUniformDecl.length();
+                int bodyStart = result.indexOf("\n", blockEnd) + 1;
+                if (bodyStart > 0) {
+                    result = result.substring(0, bodyStart) +
+                             replaceInShaderCode(result.substring(bodyStart), "dhRenderDistance");
+                }
                 Iris.logger.info("[Iris-Metal] Added dhRenderDistance to MetallumIrisUniforms block");
             }
         }
@@ -477,6 +492,7 @@ public final class MetalShaderCompiler {
         String[] lines = shaderCode.split("\n", -1);
 
         int depth = 0;            // 当前花括号深度（每行起始处的深度）
+        int parenDepth = 0;      // 当前圆括号深度（用于检测是否在函数参数列表内）
         int shadowDepth = -1;     // 同名局部变量声明所在深度；-1 表示当前未被遮蔽
 
         for (int i = 0; i < lines.length; i++) {
@@ -489,7 +505,13 @@ public final class MetalShaderCompiler {
             }
 
             boolean isUniformDecl = trimmedLine.startsWith("uniform ") || trimmedLine.startsWith("layout(");
-            boolean isLocalDecl = !isUniformDecl && shadowDepth < 0 && declaresLocalVariable(trimmedLine, varName);
+            // 当位于函数参数列表内（parenDepth > 0）时，不把形参当作局部变量声明。
+            // 否则形参 "float near," 会被 declaresLocalVariable 误判为声明了同名局部变量，
+            // 进入遮蔽作用域且因形参所在深度（通常 0）与函数体深度不一致而永不退出，
+            // 导致函数调用处（如 main 里的 AmbientOcclusion(..., near, ...)）的 near 不被改写，
+            // 变成 undeclared identifier。
+            boolean isLocalDecl = !isUniformDecl && shadowDepth < 0 && parenDepth == 0
+                    && declaresLocalVariable(trimmedLine, varName);
 
             if (isUniformDecl) {
                 // uniform / layout 声明行，跳过
@@ -511,6 +533,8 @@ public final class MetalShaderCompiler {
 
             // 更新花括号深度（按本行出现的 { 和 } 个数）
             depth += countChar(line, '{') - countChar(line, '}');
+            // 更新圆括号深度（用于检测函数参数列表）
+            parenDepth += countChar(line, '(') - countChar(line, ')');
 
             if (i < lines.length - 1) {
                 result.append("\n");
