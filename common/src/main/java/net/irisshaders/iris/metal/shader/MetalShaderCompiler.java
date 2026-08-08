@@ -236,13 +236,14 @@ public final class MetalShaderCompiler {
         // 处理 gl_VertexID - Shaderc 在 #version 330 中需要显式声明
         // 使用 in int gl_VertexID; 声明，Metal 会自动提供
         if (type == ShaderType.VERTEX && result.contains("gl_VertexID")) {
+            result = result.replace("gl_VertexID", "iris_VertexID");
             // 在第一个 uniform 块之前添加声明
             int firstUniformPos = result.indexOf("uniform ");
             if (firstUniformPos > 0) {
                 result = result.substring(0, firstUniformPos) + 
-                         "in int gl_VertexID;\n" + 
+                         "in int iris_VertexID;\n" + 
                          result.substring(firstUniformPos);
-                Iris.logger.info("[Iris-Metal] Added in int gl_VertexID declaration");
+                Iris.logger.info("[Iris-Metal] Renamed gl_VertexID to iris_VertexID declaration");
             }
         }
 

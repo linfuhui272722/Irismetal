@@ -89,7 +89,7 @@ public final class MetalVertexDescriptor {
                 new Attribute(0, FORMAT_FLOAT3, 0, 0),           // position (vec3)
                 new Attribute(1, FORMAT_UCHAR4_NORMALIZED, 12, 0), // color (vec4)
                 new Attribute(2, FORMAT_FLOAT2, 16, 0),         // uv0 (texture, vec2)
-                new Attribute(3, FORMAT_SHORT2, 24, 0),          // uv1 (lightmap, ivec2 in shader -> Short2 in metal)
+                new Attribute(3, FORMAT_FLOAT2, 24, 0),          // uv1 (lightmap, ivec2 in shader -> Short2 in metal)
                 new Attribute(4, FORMAT_CHAR3_NORMALIZED, 28, 0), // normal (vec3)
                 new Attribute(5, FORMAT_FLOAT4, 32, 0),          // mc_Entity (vec4)
         };
@@ -196,11 +196,11 @@ public final class MetalVertexDescriptor {
      * 根据 GLSL 类型名获取 Metal 格式。
      */
     private static int getMetalFormatFromGlslType(String glslType, String name) {
-        // 特殊处理：iris_UV2 总是使用 UShort2 格式
-        // 因为 Minecraft 26.2 的顶点格式中，UV2 (lightmap) 是 RG16_SINT
-        // 不管 shader 中声明为 ivec2 还是 vec2，都应该使用整数格式
+        // 特殊处理：iris_UV1 和 iris_UV2 使用 Float2 格式
+        // 因为 metallum 的 buildVertexDescriptor 使用 Float2 格式
+        // shader 中已改为 vec2 类型以匹配
         if (name.equals("iris_UV2") || name.equals("iris_UV1")) {
-            return FORMAT_USHORT2;  // 使用无符号短整型
+            return FORMAT_FLOAT2;
         }
 
         // 首先根据实际的 GLSL 类型判断（更准确）
@@ -214,11 +214,11 @@ public final class MetalVertexDescriptor {
             case "vec4":
                 return FORMAT_FLOAT4;
             case "ivec2":
-                return FORMAT_USHORT2;  // MC 26.2 中 ivec2 实际是 RG16_UINT
+                return FORMAT_FLOAT2;  // shader 现在使用 vec2
             case "ivec3":
-                return FORMAT_SHORT3;
+                return FORMAT_FLOAT3;
             case "ivec4":
-                return FORMAT_SHORT4;
+                return FORMAT_FLOAT4;
             case "mat4":
                 return FORMAT_FLOAT4;  // 不支持，但至少有个值
             default:
@@ -235,7 +235,7 @@ public final class MetalVertexDescriptor {
             case "vec2" -> 8;
             case "vec3" -> 12;
             case "vec4" -> 16;
-            case "ivec2" -> 4;  // MC 26.2 使用 RG16_SINT = 2 shorts = 4 bytes
+            case "ivec2" -> 8;  // shader 现在使用 vec2 类型
             case "ivec3" -> 12;
             case "ivec4" -> 16;
             case "mat4" -> 64;
