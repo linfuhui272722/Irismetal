@@ -457,38 +457,157 @@ public final class MetalShaderCompiler {
     }
     
     /**
-     * 在 shader 代码中替换 uniform 变量引用
-     * 只替换不在 uniform 声明行中的引用
-     * 使用简单的字符串替换，但确保只替换完整的单词
+     * 在 shader 代码中替换 uniform 变量引用为 iris_uniforms.xxx。
+     *
+     * <p>处理三类需要保留原样的情况：
+     * <ul>
+     *   <li>uniform / layout 声明行：这些 loose uniform 已被移入 UBO，原声明已从源码删除，
+     *       不应再替换；</li>
+     *   <li>同名局部变量声明（如 "float shadowFade = ..."）：局部变量会遮蔽 UBO 中的同名
+     *       uniform，若改写成 "float iris_uniforms.shadowFade = ..." 会变成非法语法
+     *       （unexpected DOT）；</li>
+     *   <li>被同名局部变量遮蔽的作用域内的所有引用：从该局部声明所在花括号块开始，直到该块
+     *       结束，varName 都指代局部变量，应保持裸名（由局部声明提供符号），不能改成
+     *       iris_uniforms.xxx（否则会引用 UBO 成员，既语义错误，又会因对 uniform 赋值而
+     *       编译失败）。</li>
+     * </ul>
      */
     private static String replaceInShaderCode(String shaderCode, String varName) {
-        // 简单的正则表达式替换：\bvarName\b 但排除 uniform 声明行
-        // 我们逐行处理
         StringBuilder result = new StringBuilder();
         String[] lines = shaderCode.split("\n", -1);
-        
+
+        int depth = 0;            // 当前花括号深度（每行起始处的深度）
+        int shadowDepth = -1;     // 同名局部变量声明所在深度；-1 表示当前未被遮蔽
+
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
-            
-            // 检查是否是 uniform 声明行
             String trimmedLine = line.trim();
-            if (trimmedLine.startsWith("uniform ") || trimmedLine.startsWith("layout(")) {
-                // uniform 声明行，跳过
+
+            // 先判断这一行处理前的深度是否已经退出遮蔽作用域
+            if (shadowDepth >= 0 && depth < shadowDepth) {
+                shadowDepth = -1;
+            }
+
+            boolean isUniformDecl = trimmedLine.startsWith("uniform ") || trimmedLine.startsWith("layout(");
+            boolean isLocalDecl = !isUniformDecl && shadowDepth < 0 && declaresLocalVariable(trimmedLine, varName);
+
+            if (isUniformDecl) {
+                // uniform / layout 声明行，跳过
+                result.append(line);
+            } else if (isLocalDecl) {
+                // 声明了同名局部变量：进入遮蔽作用域。
+                // 局部变量所在深度 = 当前行起始深度 + 声明 token 之前的净花括号数，
+                // 这样即使声明与 { 在同一行也能正确计算其所在块。
+                shadowDepth = depth + netBracesBeforeToken(trimmedLine, varName);
+                result.append(line);
+            } else if (shadowDepth >= 0) {
+                // 处于同名局部变量的遮蔽作用域内，保持裸名（指向局部变量）
                 result.append(line);
             } else {
                 // 替换行中的变量引用（确保是完整单词）
                 line = replaceWordInLine(line, varName);
                 result.append(line);
             }
-            
+
+            // 更新花括号深度（按本行出现的 { 和 } 个数）
+            depth += countChar(line, '{') - countChar(line, '}');
+
             if (i < lines.length - 1) {
                 result.append("\n");
             }
         }
-        
+
         return result.toString();
     }
-    
+
+    /**
+     * 计算一行中某个 token 第一次（作为完整单词）出现位置之前的净花括号数
+     * （左括号个数减右括号个数）。用于确定该 token 所处的花括号深度。
+     */
+    private static int netBracesBeforeToken(String line, String token) {
+        String pattern = "(?<![\\w])" + token + "(?![\\w])";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(pattern).matcher(line);
+        if (!m.find()) return 0;
+        int end = m.start();
+        int opens = 0, closes = 0;
+        for (int i = 0; i < end; i++) {
+            char c = line.charAt(i);
+            if (c == '{') opens++;
+            else if (c == '}') closes++;
+        }
+        return opens - closes;
+    }
+
+    /**
+     * 统计一行中某个字符出现的次数。
+     */
+    private static int countChar(String line, char c) {
+        int count = 0;
+        for (int i = 0; i < line.length(); i++) {
+            if (line.charAt(i) == c) count++;
+        }
+        return count;
+    }
+
+    /**
+     * 检查一行是否声明了名为 varName 的局部变量。
+     * 形如 "float shadowFade = ..."、"vec3 sunVec;"、"int frameCounter = 0, foo;"。
+     * 通过在行首匹配 GLSL 类型关键字（含 precision/qualifier 前缀与数组后缀）来识别声明语句，
+     * 并判断声明列表里是否包含 varName。
+     */
+    private static boolean declaresLocalVariable(String trimmedLine, String varName) {
+        if (trimmedLine.isEmpty()) return false;
+        // 行首必须是 GLSL 类型关键字（含可选 precision/qualifier 前缀）才可能是变量声明
+        if (!isDeclarationStart(trimmedLine)) return false;
+
+        // 在类型关键字之后，用正则匹配声明列表里的某个变量名是否为 varName。
+        // 变量名出现位置：紧跟类型关键字、或在逗号之后；后面是 [=;[,（等。
+        // 用完整单词匹配，避免把 "shadowFade2" 当成 "shadowFade"。
+        String pattern = "(?:^|[\\s,])" + Pattern.quote(varName) + "(?![\\w])";
+        return Pattern.compile(pattern).matcher(trimmedLine).find();
+    }
+
+    /**
+     * 判断一行的开头是否是 GLSL 类型关键字（即这是一条变量/对象声明语句）。
+     * 覆盖 scalar/vector/matrix/整数类型，以及可选的 precision/qualifier 前缀
+     * （highp/mediump/lowp/const/in/out/inout 等）。
+     */
+    private static boolean isDeclarationStart(String trimmedLine) {
+        // 去掉可能的 qualifier 前缀后再取第一个 token 判断类型
+        String[] tokens = trimmedLine.split("\\s+");
+        int idx = 0;
+        // 跳过 precision/qualifier 前缀
+        while (idx < tokens.length) {
+            String t = tokens[idx];
+            if (t.equals("const") || t.equals("highp") || t.equals("mediump") || t.equals("lowp")
+                    || t.equals("in") || t.equals("out") || t.equals("inout") || t.equals("uniform")) {
+                idx++;
+            } else {
+                break;
+            }
+        }
+        if (idx >= tokens.length) return false;
+        String type = tokens[idx];
+        // 处理形如 "ivec3" 或 "vec3[2]" 之类
+        String base = type.split("\\[")[0];
+        return isGlslTypeKeyword(base);
+    }
+
+    /**
+     * 判断一个 token 是否是 GLSL 内建类型关键字。
+     */
+    private static boolean isGlslTypeKeyword(String token) {
+        if (token == null || token.isEmpty()) return false;
+        String t = token.toLowerCase();
+        if (t.equals("float") || t.equals("int") || t.equals("uint") || t.equals("bool")
+                || t.equals("double")) return true;
+        // vec2/vec3/vec4, ivec*, uvec*, bvec*, dvec*
+        if (t.matches("^[iubd]?vec[234]$")) return true;
+        // mat2/mat3/mat4, mat2x3... 等
+        if (t.matches("^mat[234]([xX][234])?$")) return true;
+        return false;
+    }
+
     /**
      * 在一行代码中替换变量名（确保是完整单词）
      */
