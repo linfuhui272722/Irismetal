@@ -552,25 +552,57 @@ public final class MetalShaderCompiler {
     /**
      * 检查一行是否声明了名为 varName 的局部变量。
      * 形如 "float shadowFade = ..."、"vec3 sunVec;"、"int frameCounter = 0, foo;"。
-     * 通过在行首匹配 GLSL 类型关键字（含 precision/qualifier 前缀与数组后缀）来识别声明语句，
-     * 并判断声明列表里是否包含 varName。
+     *
+     * <p>关键：只把 varName 当作"被声明的变量名"来识别，而不是出现在赋值右侧/表达式中的引用。
+     * 例如 "float time = frameTimeCounter * 1.0f;" 不应把 frameTimeCounter 当成局部声明，
+     * 否则会误判进入遮蔽作用域，导致后续所有 uniform 引用都不被改写（undeclared identifier）。
+     * 因此先去掉行首 qualifier/precision 与类型关键字得到"声明符列表"，再逐个声明符取
+     * '=' 之前的部分作为变量名进行比较。
      */
     private static boolean declaresLocalVariable(String trimmedLine, String varName) {
         if (trimmedLine.isEmpty()) return false;
         // 行首必须是 GLSL 类型关键字（含可选 precision/qualifier 前缀）才可能是变量声明
         if (!isDeclarationStart(trimmedLine)) return false;
 
-        // 在类型关键字之后，用正则匹配声明列表里的某个变量名是否为 varName。
-        // 变量名出现位置：紧跟类型关键字、或在逗号之后；后面是 [=;[,（等。
-        // 用完整单词匹配，避免把 "shadowFade2" 当成 "shadowFade"。
-        String pattern = "(?:^|[\\s,])" + Pattern.quote(varName) + "(?![\\w])";
-        return Pattern.compile(pattern).matcher(trimmedLine).find();
+        String declList = stripTypeAndQualifiers(trimmedLine);
+        if (declList == null || declList.isEmpty()) return false;
+        // 按逗号拆分声明符。每个声明符形如: name [array] [= initializer]
+        // 只取第一个 '=' 之前作为"名字部分"，initializer 里出现的 varName 不算声明。
+        String[] declarators = declList.split(",");
+        for (String d : declarators) {
+            String decl = d.trim();
+            if (decl.isEmpty()) continue;
+            int eq = decl.indexOf('=');
+            String namePart = (eq >= 0) ? decl.substring(0, eq) : decl;
+            namePart = namePart.trim();
+            // 取数组下标之前部分作为变量名
+            int lb = namePart.indexOf('[');
+            if (lb >= 0) namePart = namePart.substring(0, lb).trim();
+            if (namePart.equals(varName)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 去掉行首的 qualifier/precision 前缀与类型关键字，返回剩余的声明符列表部分。
+     * 例如 "const float shadowFade = 1.0f;" -> "shadowFade = 1.0f;"
+     * 返回 null 表示无法识别。
+     */
+    private static String stripTypeAndQualifiers(String trimmedLine) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+            "^\\s*((?:const\\s+|highp\\s+|mediump\\s+|lowp\\s+|in\\s+|out\\s+|inout\\s+)*)([\\w]+)\\b(.*)$"
+        ).matcher(trimmedLine);
+        if (!m.matches()) return null;
+        String rest = m.group(3);
+        if (rest == null) return null;
+        return rest.trim();
     }
 
     /**
      * 判断一行的开头是否是 GLSL 类型关键字（即这是一条变量/对象声明语句）。
      * 覆盖 scalar/vector/matrix/整数类型，以及可选的 precision/qualifier 前缀
      * （highp/mediump/lowp/const/in/out/inout 等）。
+     * 类型关键字后必须紧跟一个标识符（变量名），而不是 '('（那是函数定义/构造调用）。
      */
     private static boolean isDeclarationStart(String trimmedLine) {
         // 去掉可能的 qualifier 前缀后再取第一个 token 判断类型
@@ -590,7 +622,12 @@ public final class MetalShaderCompiler {
         String type = tokens[idx];
         // 处理形如 "ivec3" 或 "vec3[2]" 之类
         String base = type.split("\\[")[0];
-        return isGlslTypeKeyword(base);
+        if (!isGlslTypeKeyword(base)) return false;
+        // 类型后面必须紧跟一个标识符（变量名），而不是 '('（函数定义/构造调用）
+        if (idx + 1 >= tokens.length) return false;
+        String after = tokens[idx + 1];
+        if (after.startsWith("(")) return false;
+        return true;
     }
 
     /**
