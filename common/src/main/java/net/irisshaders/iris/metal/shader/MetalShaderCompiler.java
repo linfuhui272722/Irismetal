@@ -566,9 +566,13 @@ public final class MetalShaderCompiler {
 
         String declList = stripTypeAndQualifiers(trimmedLine);
         if (declList == null || declList.isEmpty()) return false;
-        // 按逗号拆分声明符。每个声明符形如: name [array] [= initializer]
+        // 按"顶层逗号"拆分声明符（忽略括号/方括号/花括号内的逗号），避免把
+        // vec4(a, b, c) 构造函数参数里的逗号当成声明符分隔符——否则构造函数实参
+        // "gbufferProjectionInverse[1].y" 会被当成一个声明符，其 '[' 前的名字
+        // gbufferProjectionInverse 恰好等于 varName，误判为同名局部声明。
+        // 每个声明符形如: name [array] [= initializer]
         // 只取第一个 '=' 之前作为"名字部分"，initializer 里出现的 varName 不算声明。
-        String[] declarators = declList.split(",");
+        List<String> declarators = splitTopLevelCommas(declList);
         for (String d : declarators) {
             String decl = d.trim();
             if (decl.isEmpty()) continue;
@@ -581,6 +585,29 @@ public final class MetalShaderCompiler {
             if (namePart.equals(varName)) return true;
         }
         return false;
+    }
+
+    /**
+     * 按"顶层逗号"拆分字符串，忽略括号 ()、方括号 []、花括号 {} 内的逗号。
+     * 用于正确拆分声明符列表，避免把 vec4(a, b, c) 构造函数参数里的逗号当成声明符分隔符。
+     */
+    private static List<String> splitTopLevelCommas(String s) {
+        List<String> result = new ArrayList<>();
+        int depth = 0;
+        int start = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '(' || c == '[' || c == '{') {
+                depth++;
+            } else if (c == ')' || c == ']' || c == '}') {
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                result.add(s.substring(start, i));
+                start = i + 1;
+            }
+        }
+        result.add(s.substring(start));
+        return result;
     }
 
     /**
