@@ -505,22 +505,27 @@ public final class MetalShaderCompiler {
             }
 
             boolean isUniformDecl = trimmedLine.startsWith("uniform ") || trimmedLine.startsWith("layout(");
-            // 当位于函数参数列表内（parenDepth > 0）时，不把形参当作局部变量声明。
-            // 否则形参 "float near," 会被 declaresLocalVariable 误判为声明了同名局部变量，
-            // 进入遮蔽作用域且因形参所在深度（通常 0）与函数体深度不一致而永不退出，
-            // 导致函数调用处（如 main 里的 AmbientOcclusion(..., near, ...)）的 near 不被改写，
-            // 变成 undeclared identifier。
-            boolean isLocalDecl = !isUniformDecl && shadowDepth < 0 && parenDepth == 0
+            // 始终检查 declaresLocalVariable（包括函数参数列表内），这样形参声明行
+            // "float near," 会被识别为声明并原样保留，不会被改写成非法的
+            // "float iris_uniforms.near,"（unexpected DOT）。
+            // 但只有非形参（parenDepth == 0，即真正的局部变量声明）才进入遮蔽作用域；
+            // 形参不遮蔽——函数体内对同名标识符的引用会被改写为 iris_uniforms.X
+            // （当函数体不使用该形参时是安全的，这是常见情况）。
+            boolean isLocalDecl = !isUniformDecl && shadowDepth < 0
                     && declaresLocalVariable(trimmedLine, varName);
 
             if (isUniformDecl) {
                 // uniform / layout 声明行，跳过
                 result.append(line);
             } else if (isLocalDecl) {
-                // 声明了同名局部变量：进入遮蔽作用域。
+                // 声明了同名变量（局部变量或函数形参）：原样保留该行，不重写声明的名字。
+                // 仅当是真正的局部变量（parenDepth == 0）时才进入遮蔽作用域；
+                // 函数形参（parenDepth > 0）不遮蔽。
                 // 局部变量所在深度 = 当前行起始深度 + 声明 token 之前的净花括号数，
                 // 这样即使声明与 { 在同一行也能正确计算其所在块。
-                shadowDepth = depth + netBracesBeforeToken(trimmedLine, varName);
+                if (parenDepth == 0) {
+                    shadowDepth = depth + netBracesBeforeToken(trimmedLine, varName);
+                }
                 result.append(line);
             } else if (shadowDepth >= 0) {
                 // 处于同名局部变量的遮蔽作用域内，保持裸名（指向局部变量）
