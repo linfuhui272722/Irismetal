@@ -324,7 +324,10 @@ public final class MetalShaderCompiler {
                         // non-opaque 类型放入 block
                         // 不添加到这个 body 中，因为我们会把它们移到 UBO 中
                         // 注意：这里我们不追加到 body，相当于从源码中移除了这个 uniform 声明
-                        blockUniforms.add(uniformDecl);
+                        // 一条 uniform 声明可能声明多个变量（如 "float a, b, c"），
+                        // 这里拆分为单独的 "类型 名称" 条目，确保后续逐个变量重写引用时不会遗漏。
+                        List<String> splitDecls = splitMultiDeclarator(uniformDecl);
+                        blockUniforms.addAll(splitDecls);
                         Iris.logger.info("[Iris-Metal] Found block uniform (will be moved to MetallumIrisUniforms): {}", uniformDecl);
                     }
                 }
@@ -534,6 +537,56 @@ public final class MetalShaderCompiler {
         }
         return trimmed.trim();
     }
+    
+    /**
+     * 将一条 uniform 声明拆分为多个单独的 "类型 名称" 条目。
+     * 输入形如 "float a, b, c[3]"，输出为 ["float a", "float b", "float c[3]"]。
+     * 也支持 precision/qualifier 前缀，如 "highp float a, b" -> ["highp float a", "highp float b"]。
+     * 如果声明只有一个变量，则返回包含单个元素的列表。
+     */
+    private static List<String> splitMultiDeclarator(String uniformDecl) {
+        List<String> result = new ArrayList<>();
+        String trimmed = uniformDecl.trim();
+        // 按逗号拆分变量名列表。注意：数组大小声明中不会出现裸逗号（如 float a[3]）。
+        String[] segments = trimmed.split(",");
+        if (segments.length == 0) {
+            result.add(trimmed);
+            return result;
+        }
+        // 第一个 segment 形如 "<type> <name1>"（可能含 precision/qualifier，如 "highp float a"），
+        // 其余 segment 形如 "<nameN>" 或 "<nameN>[size]"。
+        String firstSegment = segments[0].trim();
+        String[] firstTokens = firstSegment.split("\\s+");
+        if (firstTokens.length < 2) {
+            // 无类型前缀的异常情况，原样返回
+            for (String s : segments) {
+                String t = s.trim();
+                if (!t.isEmpty()) result.add(t);
+            }
+            if (result.isEmpty()) result.add(trimmed);
+            return result;
+        }
+        // 类型前缀 = 除最后一个 token（name1）外的所有 token
+        String name1 = firstTokens[firstTokens.length - 1];
+        StringBuilder typePrefix = new StringBuilder();
+        for (int i = 0; i < firstTokens.length - 1; i++) {
+            if (i > 0) typePrefix.append(" ");
+            typePrefix.append(firstTokens[i]);
+        }
+        String typeStr = typePrefix.toString();
+        result.add(typeStr + " " + name1);
+        for (int i = 1; i < segments.length; i++) {
+            String n = segments[i].trim();
+            if (!n.isEmpty()) {
+                result.add(typeStr + " " + n);
+            }
+        }
+        if (result.isEmpty()) {
+            result.add(trimmed);
+        }
+        return result;
+    }
+
     
     /**
      * 找到 directive prelude（#version, #extension 等）结束的位置
